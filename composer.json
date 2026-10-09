@@ -2,6 +2,7 @@
     "name": "galvani/php-scheduler-pro",
     "description": "Swappable PHP scheduler: one task model and our own Redis mutex over Laravel's scheduler or crunz",
     "type": "library",
+    "license": "proprietary",
     "require": {
         "php": ">=8.5",
         "dragonmantank/cron-expression": "^3.4",
