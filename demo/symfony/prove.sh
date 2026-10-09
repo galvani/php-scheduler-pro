@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")"
+export REDIS_HOST="${REDIS_HOST:-127.0.0.1}"
 export REDIS_PORT="${REDIS_PORT:-16379}"
 
 php -r '
 $redis = new Redis();
-$redis->connect("127.0.0.1", (int) getenv("REDIS_PORT"));
+$redis->connect(getenv("REDIS_HOST"), (int) getenv("REDIS_PORT"));
 foreach ($redis->keys("scheduler:*hello*") as $key) {
     $redis->del($key);
 }
@@ -32,7 +33,7 @@ cat var/hello.log
 echo "== scheduler:runs:hello, oldest first"
 php -r '
 $redis = new Redis();
-$redis->connect("127.0.0.1", (int) getenv("REDIS_PORT"));
+$redis->connect(getenv("REDIS_HOST"), (int) getenv("REDIS_PORT"));
 foreach (array_reverse($redis->lRange("scheduler:runs:hello", 0, -1)) as $record) {
     $run = json_decode($record, true, flags: JSON_THROW_ON_ERROR);
     printf("%-9s %-8s %s\n", $run["state"], $run["host"], $run["detail"] ?? "");

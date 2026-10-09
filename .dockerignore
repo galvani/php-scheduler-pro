@@ -1,0 +1,7 @@
+vendor
+composer.lock
+.git
+.php-cs-fixer.cache
+.phpunit.result.cache
+demo/symfony/vendor
+demo/symfony/var
