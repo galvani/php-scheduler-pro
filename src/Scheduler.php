@@ -16,32 +16,46 @@ final readonly class Scheduler implements SchedulerInterface
         private TaskRepositoryInterface $runtime,
     ) {}
 
+    /** {@inheritDoc} */
     public function tasks(): TaskSet
     {
         return $this->source->load();
     }
 
-    /** @throws TaskNotWritableException */
+    /**
+     * {@inheritDoc}
+     *
+     * @throws TaskNotWritableException
+     */
     public function schedule(TaskDefinition $task): void
     {
         $this->assertWritable($task->id);
         $this->runtime->save($task);
     }
 
-    /** @throws TaskNotWritableException */
+    /**
+     * {@inheritDoc}
+     *
+     * @throws TaskNotWritableException
+     */
     public function disable(TaskId $id): void
     {
         $this->assertWritable($id);
         $this->runtime->disable($id);
     }
 
-    /** @throws TaskNotWritableException */
+    /**
+     * {@inheritDoc}
+     *
+     * @throws TaskNotWritableException
+     */
     public function remove(TaskId $id): void
     {
         $this->assertWritable($id);
         $this->runtime->remove($id);
     }
 
+    /** {@inheritDoc} */
     public function registerWith(SchedulerEngineInterface $engine): TaskSet
     {
         $set = $this->tasks();

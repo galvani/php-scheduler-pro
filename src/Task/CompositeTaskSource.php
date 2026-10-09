@@ -7,6 +7,7 @@ final readonly class CompositeTaskSource implements TaskSourceInterface
     /** @param list<TaskSourceInterface> $sources */
     public function __construct(private array $sources) {}
 
+    /** {@inheritDoc} */
     public function load(): TaskSet
     {
         $seen = [];

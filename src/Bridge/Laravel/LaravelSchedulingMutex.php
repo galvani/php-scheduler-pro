@@ -23,6 +23,7 @@ final class LaravelSchedulingMutex implements SchedulingMutex
         private readonly CacheSchedulingMutex $laravelDefault,
     ) {}
 
+    /** {@inheritDoc} */
     public function create(Event $event, DateTimeInterface $time): bool
     {
         $task = $this->index->get($event->mutexName());
@@ -38,6 +39,7 @@ final class LaravelSchedulingMutex implements SchedulingMutex
         return false;
     }
 
+    /** {@inheritDoc} */
     public function exists(Event $event, DateTimeInterface $time): bool
     {
         $task = $this->index->get($event->mutexName());

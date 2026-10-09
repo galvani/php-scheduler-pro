@@ -23,7 +23,11 @@ final readonly class MutexStore implements PersistingStoreInterface
         private LockKey $key,
     ) {}
 
-    /** @throws LockConflictedException */
+    /**
+     * {@inheritDoc}
+     *
+     * @throws LockConflictedException
+     */
     public function save(Key $key): void
     {
         $lock = $this->mutex->acquire($this->key, self::INITIAL_TTL);
@@ -33,12 +37,14 @@ final readonly class MutexStore implements PersistingStoreInterface
         $key->setState(self::class, $lock);
     }
 
+    /** {@inheritDoc} */
     public function delete(Key $key): void
     {
         $this->heldBy($key)?->release();
         $key->removeState(self::class);
     }
 
+    /** {@inheritDoc} */
     public function exists(Key $key): bool
     {
         $lock = $this->heldBy($key);
@@ -46,7 +52,11 @@ final readonly class MutexStore implements PersistingStoreInterface
         return null !== $lock && $lock->expiresAt() > new DateTimeImmutable();
     }
 
-    /** @throws LockConflictedException */
+    /**
+     * {@inheritDoc}
+     *
+     * @throws LockConflictedException
+     */
     public function putOffExpiration(Key $key, float $ttl): void
     {
         $lock = $this->heldBy($key);

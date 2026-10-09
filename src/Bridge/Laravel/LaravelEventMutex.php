@@ -20,6 +20,7 @@ final class LaravelEventMutex implements EventMutex
         private readonly CacheEventMutex $laravelDefault,
     ) {}
 
+    /** {@inheritDoc} */
     public function create(Event $event): bool
     {
         $task = $this->index->get($event->mutexName());
@@ -35,6 +36,7 @@ final class LaravelEventMutex implements EventMutex
         return true;
     }
 
+    /** {@inheritDoc} */
     public function exists(Event $event): bool
     {
         $task = $this->index->get($event->mutexName());
@@ -45,6 +47,7 @@ final class LaravelEventMutex implements EventMutex
         return $this->mutex->isLocked(LockKey::forTask($task->id));
     }
 
+    /** {@inheritDoc} */
     public function forget(Event $event): void
     {
         if (null === $this->index->get($event->mutexName())) {

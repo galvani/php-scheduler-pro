@@ -20,11 +20,13 @@ final class LaravelEngine implements SchedulerEngineInterface
         private readonly TaskIndex $index,
     ) {}
 
+    /** {@inheritDoc} */
     public function name(): string
     {
         return 'laravel';
     }
 
+    /** {@inheritDoc} */
     public function register(array $tasks): array
     {
         $problems = [];

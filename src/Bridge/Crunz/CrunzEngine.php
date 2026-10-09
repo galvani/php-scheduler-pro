@@ -41,11 +41,13 @@ final class CrunzEngine implements SchedulerEngineInterface
         });
     }
 
+    /** {@inheritDoc} */
     public function name(): string
     {
         return 'crunz';
     }
 
+    /** {@inheritDoc} */
     public function register(array $tasks): array
     {
         $problems = [];

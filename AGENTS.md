@@ -53,6 +53,8 @@ included. PHPStan enforces it (`exceptions.check` in `phpstan.neon`); a stale `@
 - Enums for states and reasons.
 - Method names that make comments unnecessary. No comments that describe what the code does; a
   comment only for a trap the code cannot show.
+- Every method that implements an interface or overrides a parent carries `{@inheritDoc}` (the
+  fixer keeps it: `no_superfluous_phpdoc_tags.remove_inheritdoc` is off).
 - PHPDoc only where the declaration cannot carry the type (array shapes such as
   `array<string, mixed>`, `list<...>`, `positive-int`).
 - No `__toString()` or `equals()` on value objects unless something calls them; read `->value`.

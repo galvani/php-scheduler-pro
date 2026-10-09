@@ -16,17 +16,20 @@ final class RecordingRunListener implements RunListenerInterface
         private readonly string $host,
     ) {}
 
+    /** {@inheritDoc} */
     public function started(TaskId $id, DateTimeImmutable $at): void
     {
         $this->runs->append(new RunRecord($id, RunState::Started, $at, $this->host));
     }
 
+    /** {@inheritDoc} */
     public function finished(TaskId $id, DateTimeImmutable $at): void
     {
         $state = $this->overran($id, $at) ? RunState::Overran : RunState::Finished;
         $this->runs->append(new RunRecord($id, $state, $at, $this->host));
     }
 
+    /** {@inheritDoc} */
     public function failed(TaskId $id, DateTimeImmutable $at, ?int $exitCode, ?Throwable $error): void
     {
         $state = $this->overran($id, $at) ? RunState::Overran : RunState::Failed;
@@ -34,6 +37,7 @@ final class RecordingRunListener implements RunListenerInterface
         $this->runs->append(new RunRecord($id, $state, $at, $this->host, $detail));
     }
 
+    /** {@inheritDoc} */
     public function skipped(TaskId $id, DateTimeImmutable $at, SkipReason $reason): void
     {
         $this->runs->append(new RunRecord($id, RunState::Skipped, $at, $this->host, $reason->value));
