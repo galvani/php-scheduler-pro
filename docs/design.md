@@ -54,7 +54,9 @@ missing.**
 ## Exceptions
 
 Every exception extends the abstract, checked `SchedulerException`: `InvalidTaskException` (a task breaks a
-rule), `TaskNotWritableException`, `LockUnavailableException`, `StorageException`. Every method that can
+rule), `TaskConflictException` (an id is already scheduled; adding never replaces), `TaskNotFoundException`
+(disabling or removing an id that is not scheduled), `TaskNotWritableException`, `LockUnavailableException`,
+`StorageException`, `MissingPackageException`. Every method that can
 throw declares it, constructors included, and PHPStan enforces it. Reading never throws: an unreadable
 source or a bad row is a `TaskProblem`, and every other task still runs.
 

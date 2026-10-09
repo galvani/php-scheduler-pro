@@ -5,6 +5,8 @@ namespace Scheduling;
 use Scheduling\Capability\Capability;
 use Scheduling\Capability\Fulfilment;
 use Scheduling\Exception\StorageException;
+use Scheduling\Exception\TaskConflictException;
+use Scheduling\Exception\TaskNotFoundException;
 use Scheduling\Exception\TaskNotWritableException;
 use Scheduling\Task\TaskDefinition;
 use Scheduling\Task\TaskId;
@@ -42,16 +44,19 @@ final readonly class Scheduler implements SchedulerInterface
     }
 
     /**
-     * Adds or replaces a task in the writable source (the database); the engine picks it up on its next tick.
+     * Adds a task to the writable source (the database); the engine picks it up on its next tick. It never replaces
+     * a task: to change one, remove it and schedule it again.
      *
-     * Saves the definition to the writable repository after the writability check.
+     * The writable repository decides the conflict itself, so two processes adding the same id at once get one
+     * success and one TaskConflictException.
      *
+     * @throws TaskConflictException
      * @throws TaskNotWritableException
      * @throws StorageException
      */
     public function schedule(TaskDefinition $task): void
     {
-        $this->writable($task->id)->save($task);
+        $this->writable($task->id)->add($task);
     }
 
     /**
@@ -59,6 +64,7 @@ final readonly class Scheduler implements SchedulerInterface
      *
      * Delegates to the writable repository, which rewrites the stored definition with enabled=false.
      *
+     * @throws TaskNotFoundException
      * @throws TaskNotWritableException
      * @throws StorageException
      */
@@ -70,6 +76,7 @@ final readonly class Scheduler implements SchedulerInterface
     /**
      * Deletes the task from the writable source.
      *
+     * @throws TaskNotFoundException
      * @throws TaskNotWritableException
      * @throws StorageException
      */

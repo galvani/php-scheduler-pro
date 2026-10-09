@@ -8,6 +8,7 @@ use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Contracts\Container\BindingResolutionException;
 use Psr\Log\LoggerInterface;
 use Scheduling\Exception\StorageException;
+use Scheduling\Exception\TaskConflictException;
 use Scheduling\Exception\TaskNotWritableException;
 use Scheduling\SchedulerInterface;
 use Scheduling\Tests\Run\CollectingLogger;
@@ -19,6 +20,7 @@ final class DatabaseTasksTest extends LaravelTestCase
      * @throws BindingResolutionException
      * @throws StorageException
      * @throws TaskNotWritableException
+     * @throws TaskConflictException
      */
     public function testTaskSavedThroughTheSchedulerRegistersOnTheNextScheduleResolution(): void
     {
@@ -39,6 +41,7 @@ final class DatabaseTasksTest extends LaravelTestCase
      * @throws BindingResolutionException
      * @throws StorageException
      * @throws TaskNotWritableException
+     * @throws TaskConflictException
      */
     public function testYamlTaskCannotBeOverwrittenThroughTheDatabase(): void
     {

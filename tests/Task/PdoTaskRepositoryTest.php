@@ -11,6 +11,8 @@ use PDOStatement;
 use PHPUnit\Framework\TestCase;
 use Scheduling\Exception\InvalidTaskException;
 use Scheduling\Exception\StorageException;
+use Scheduling\Exception\TaskConflictException;
+use Scheduling\Exception\TaskNotFoundException;
 use Scheduling\Task\Condition\ConditionInterface;
 use Scheduling\Task\Condition\Environments;
 use Scheduling\Task\PdoTaskRepository;
@@ -28,41 +30,75 @@ final class PdoTaskRepositoryTest extends TestCase
         $this->pdo->exec('CREATE TABLE scheduler_tasks (id VARCHAR(100) PRIMARY KEY, definition TEXT NOT NULL)');
     }
 
-    /** @throws StorageException */
+    /**
+     * @throws StorageException
+     * @throws TaskConflictException
+     */
     public function testSavedTaskLoadsBackEqual(): void
     {
         $task = Tasks::make('report', [new Environments(['production'], 'production')], timezone: 'America/New_York');
         $repository = $this->repository();
 
-        $repository->save($task);
+        $repository->add($task);
         $set = $repository->load();
 
         self::assertSame([], $set->problems);
         self::assertEquals(['report' => $task], $set->tasks);
     }
 
-    /** @throws StorageException */
-    public function testSaveReplacesAnExistingTask(): void
+    /**
+     * @throws StorageException
+     * @throws TaskConflictException
+     */
+    public function testAddingAnIdThatIsAlreadyStoredIsAConflictAndKeepsTheStoredTask(): void
     {
         $repository = $this->repository();
-        $repository->save(Tasks::make('report'));
-        $repository->save(Tasks::make('report', enabled: false));
+        $repository->add(Tasks::make('report'));
 
-        $set = $repository->load();
+        try {
+            $repository->add(Tasks::make('report', enabled: false));
+            self::fail('A second add of the same id must be refused');
+        } catch (TaskConflictException $e) {
+            self::assertSame('Task report is already scheduled', $e->getMessage());
+        }
 
-        self::assertCount(1, $set->tasks);
-        self::assertFalse($set->tasks['report']->enabled);
+        self::assertTrue($repository->load()->tasks['report']->enabled);
+    }
+
+    /**
+     * @throws PDOException
+     * @throws StorageException
+     * @throws TaskConflictException
+     */
+    public function testTwoWritersAddingTheSameIdGetOneSuccessAndOneConflict(): void
+    {
+        $file = tempnam(sys_get_temp_dir(), 'scheduler-tasks-');
+        self::assertIsString($file);
+        try {
+            $first = new PDO("sqlite:{$file}");
+            $first->exec('CREATE TABLE scheduler_tasks (id VARCHAR(100) PRIMARY KEY, definition TEXT NOT NULL)');
+            $second = new PDO("sqlite:{$file}");
+            new PdoTaskRepository($first, $this->mapper())->add(Tasks::make('report'));
+
+            $this->expectException(TaskConflictException::class);
+
+            new PdoTaskRepository($second, $this->mapper())->add(Tasks::make('report', enabled: false));
+        } finally {
+            unlink($file);
+        }
     }
 
     /**
      * @throws InvalidTaskException
      * @throws StorageException
+     * @throws TaskConflictException
+     * @throws TaskNotFoundException
      */
     public function testDisableKeepsTheRestOfTheDefinition(): void
     {
         $repository = $this->repository();
         $task = Tasks::make('report');
-        $repository->save($task);
+        $repository->add($task);
 
         $repository->disable(new TaskId('report'));
 
@@ -74,25 +110,61 @@ final class PdoTaskRepositoryTest extends TestCase
     /**
      * @throws InvalidTaskException
      * @throws StorageException
+     * @throws TaskNotFoundException
      */
-    public function testDisablingAMissingTaskChangesNothing(): void
+    public function testDisablingAMissingTaskIsNotFound(): void
     {
-        $repository = $this->repository();
+        $this->expectException(TaskNotFoundException::class);
+        $this->expectExceptionMessage('Task absent is not scheduled');
 
-        $repository->disable(new TaskId('absent'));
-
-        self::assertSame([], $repository->load()->tasks);
+        $this->repository()->disable(new TaskId('absent'));
     }
 
     /**
      * @throws InvalidTaskException
      * @throws StorageException
+     * @throws TaskConflictException
+     * @throws TaskNotFoundException
+     */
+    public function testRemovingTheSameTaskTwiceIsNotFoundTheSecondTime(): void
+    {
+        $repository = $this->repository();
+        $repository->add(Tasks::make('report'));
+        $repository->remove(new TaskId('report'));
+
+        $this->expectException(TaskNotFoundException::class);
+
+        $repository->remove(new TaskId('report'));
+    }
+
+    /**
+     * @throws InvalidTaskException
+     * @throws StorageException
+     * @throws TaskConflictException
+     * @throws TaskNotFoundException
+     */
+    public function testATaskIsChangedByRemovingItAndAddingItAgain(): void
+    {
+        $repository = $this->repository();
+        $repository->add(Tasks::make('report'));
+
+        $repository->remove(new TaskId('report'));
+        $repository->add(Tasks::make('report', enabled: false));
+
+        self::assertFalse($repository->load()->tasks['report']->enabled);
+    }
+
+    /**
+     * @throws InvalidTaskException
+     * @throws StorageException
+     * @throws TaskConflictException
+     * @throws TaskNotFoundException
      */
     public function testRemoveDeletesOnlyThatTask(): void
     {
         $repository = $this->repository();
-        $repository->save(Tasks::make('a'));
-        $repository->save(Tasks::make('b'));
+        $repository->add(Tasks::make('a'));
+        $repository->add(Tasks::make('b'));
 
         $repository->remove(new TaskId('a'));
 
@@ -102,11 +174,12 @@ final class PdoTaskRepositoryTest extends TestCase
     /**
      * @throws PDOException
      * @throws StorageException
+     * @throws TaskConflictException
      */
     public function testCorruptRowsAreProblemsAndTheOthersStillLoad(): void
     {
         $repository = $this->repository();
-        $repository->save(Tasks::make('good'));
+        $repository->add(Tasks::make('good'));
         $insert = $this->pdo->prepare('INSERT INTO scheduler_tasks (id, definition) VALUES (?, ?)');
         $insert->execute(['broken-json', '{not json']);
         $insert->execute(['not-an-object', '"text"']);
@@ -149,6 +222,7 @@ final class PdoTaskRepositoryTest extends TestCase
     /**
      * @throws PDOException
      * @throws StorageException
+     * @throws TaskConflictException
      */
     public function testWriteFailureThrowsStorageException(): void
     {
@@ -157,13 +231,14 @@ final class PdoTaskRepositoryTest extends TestCase
 
         $this->expectException(StorageException::class);
 
-        $repository->save(Tasks::make('report'));
+        $repository->add(Tasks::make('report'));
     }
 
     /**
      * @throws InvalidTaskException
      * @throws PDOException
      * @throws StorageException
+     * @throws TaskNotFoundException
      */
     public function testWriteFailureWithoutExceptionsThrowsStorageException(): void
     {
@@ -180,6 +255,7 @@ final class PdoTaskRepositoryTest extends TestCase
      * @throws InvalidTaskException
      * @throws PDOException
      * @throws StorageException
+     * @throws TaskNotFoundException
      */
     public function testDisableFailureThrowsStorageException(): void
     {
@@ -191,14 +267,17 @@ final class PdoTaskRepositoryTest extends TestCase
         $repository->disable(new TaskId('report'));
     }
 
-    /** @throws PDOException */
+    /**
+     * @throws PDOException
+     * @throws TaskConflictException
+     */
     public function testFailedWriteLeavesNoOpenTransaction(): void
     {
         $repository = $this->repository();
         $this->pdo->exec('DROP TABLE scheduler_tasks');
 
         try {
-            $repository->save(Tasks::make('report'));
+            $repository->add(Tasks::make('report'));
             self::fail('The write did not fail');
         } catch (StorageException) {
             self::assertFalse($this->pdo->inTransaction());
@@ -208,20 +287,24 @@ final class PdoTaskRepositoryTest extends TestCase
     /**
      * @throws PDOException
      * @throws StorageException
+     * @throws TaskConflictException
      */
-    public function testSaveInsideTheCallersTransactionLeavesItOpen(): void
+    public function testAddInsideTheCallersTransactionLeavesItOpen(): void
     {
         $repository = $this->repository();
         $this->pdo->beginTransaction();
 
-        $repository->save(Tasks::make('report'));
+        $repository->add(Tasks::make('report'));
 
         self::assertTrue($this->pdo->inTransaction());
         $this->pdo->rollBack();
         self::assertSame([], $repository->load()->tasks);
     }
 
-    /** @throws StorageException */
+    /**
+     * @throws StorageException
+     * @throws TaskConflictException
+     */
     public function testACustomConditionCannotBeStored(): void
     {
         $custom = new class implements ConditionInterface {
@@ -239,19 +322,20 @@ final class PdoTaskRepositoryTest extends TestCase
 
         $this->expectException(StorageException::class);
 
-        $repository->save(Tasks::make('report', [$custom]));
+        $repository->add(Tasks::make('report', [$custom]));
     }
 
     /**
      * @throws PDOException
      * @throws StorageException
+     * @throws TaskConflictException
      */
     public function testUsesTheGivenTable(): void
     {
         $this->pdo->exec('CREATE TABLE jobs (id VARCHAR(100) PRIMARY KEY, definition TEXT NOT NULL)');
         $repository = new PdoTaskRepository($this->pdo, $this->mapper(), 'jobs');
 
-        $repository->save(Tasks::make('report'));
+        $repository->add(Tasks::make('report'));
 
         $count = $this->pdo->query('SELECT COUNT(*) FROM jobs');
         self::assertInstanceOf(PDOStatement::class, $count);

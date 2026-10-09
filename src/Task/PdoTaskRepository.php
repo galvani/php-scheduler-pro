@@ -9,6 +9,8 @@ use PDOException;
 use PDOStatement;
 use Scheduling\Exception\InvalidTaskException;
 use Scheduling\Exception\StorageException;
+use Scheduling\Exception\TaskConflictException;
+use Scheduling\Exception\TaskNotFoundException;
 
 /**
  * Writable task source on a PDO table. Each row holds the task id and its definition as JSON, in the same
@@ -17,6 +19,8 @@ use Scheduling\Exception\StorageException;
  */
 final readonly class PdoTaskRepository implements TaskRepositoryInterface
 {
+    private const string INTEGRITY_VIOLATION = '23';
+
     /**
      * @param string $table table with an `id` and a `definition` column; only letters, digits and underscores,
      *                      because it is placed into the SQL text
@@ -67,85 +71,96 @@ final readonly class PdoTaskRepository implements TaskRepositoryInterface
     }
 
     /**
-     * Inserts the task, or replaces the stored one with the same id.
+     * Adds the task. An id that is already stored is refused, never replaced; the storage itself decides, so two
+     * writers adding the same id at once get one success and one conflict.
      *
-     * Replaces any row with the same id (delete then insert) inside one transaction.
+     * A plain INSERT: the table's primary key rejects a second row with the same id, and that rejection (SQLSTATE
+     * class 23, integrity constraint violation, on SQLite, MySQL and PostgreSQL alike) becomes the conflict.
+     *
+     * @throws TaskConflictException when a task with this id is already stored
+     * @throws StorageException      when the storage cannot be written or the task cannot be stored as data
      */
-    public function save(TaskDefinition $task): void
+    public function add(TaskDefinition $task): void
     {
         try {
             $definition = json_encode($this->mapper->toArray($task), JSON_THROW_ON_ERROR);
         } catch (JsonException|InvalidTaskException $e) {
             throw new StorageException("Task {$task->id->value} cannot be stored", previous: $e);
         }
-        $this->replace($task->id->value, $definition);
+        try {
+            $this->run("INSERT INTO {$this->table} (id, definition) VALUES (?, ?)", [$task->id->value, $definition]);
+        } catch (StorageException $e) {
+            $cause = $e->getPrevious();
+            if ($cause instanceof PDOException && str_starts_with((string) $cause->getCode(), self::INTEGRITY_VIOLATION)) {
+                throw new TaskConflictException("Task {$task->id->value} is already scheduled", previous: $e);
+            }
+            throw $e;
+        }
     }
 
     /**
-     * Marks the task disabled; an unknown id is a no-op.
+     * Marks the task disabled; it stays stored but does not run.
      *
-     * Sets `enabled` to false in the stored JSON without re-validating the rest. An unknown id is ignored.
+     * Reads the stored definition, sets `enabled: false` and writes it back with an UPDATE; no row read, or no row
+     * updated because the task was removed in between, means the task is not there.
+     *
+     * @throws TaskNotFoundException when no task with this id is stored
+     * @throws StorageException      when the storage cannot be read or written
      */
     public function disable(TaskId $id): void
     {
         try {
             $stored = $this->run("SELECT definition FROM {$this->table} WHERE id = ?", [$id->value])->fetchColumn();
-            if (false === $stored) {
-                return;
-            }
+        } catch (PDOException $e) {
+            throw new StorageException("Task {$id->value} cannot be read", previous: $e);
+        }
+        if (false === $stored) {
+            throw new TaskNotFoundException("Task {$id->value} is not scheduled");
+        }
+        try {
             $row = is_string($stored) ? json_decode($stored, true, flags: JSON_THROW_ON_ERROR) : null;
             if (!is_array($row)) {
                 throw new StorageException("Stored definition of {$id->value} is not an object");
             }
             $row['enabled'] = false;
-            $this->replace($id->value, json_encode($row, JSON_THROW_ON_ERROR));
-        } catch (JsonException|PDOException $e) {
+            $definition = json_encode($row, JSON_THROW_ON_ERROR);
+        } catch (JsonException $e) {
             throw new StorageException("Task {$id->value} cannot be disabled", previous: $e);
+        }
+        if (0 === $this->changedRows("UPDATE {$this->table} SET definition = ? WHERE id = ?", [$definition, $id->value])) {
+            throw new TaskNotFoundException("Task {$id->value} is not scheduled");
         }
     }
 
     /**
-     * Deletes the task; an unknown id is a no-op.
+     * Deletes the task.
+     *
+     * The number of rows the DELETE removed is the answer: none means the task is not there.
+     *
+     * @throws TaskNotFoundException when no task with this id is stored
+     * @throws StorageException      when the storage cannot be written
      */
     public function remove(TaskId $id): void
     {
-        $this->run("DELETE FROM {$this->table} WHERE id = ?", [$id->value]);
-    }
-
-    /**
-     * Delete and insert as one unit; joins the caller's transaction when one is open, otherwise opens and commits its own.
-     *
-     * @throws StorageException
-     */
-    private function replace(string $id, string $definition): void
-    {
-        $own = !$this->pdo->inTransaction();
-        try {
-            if ($own && !$this->pdo->beginTransaction()) {
-                throw new StorageException('Cannot begin a transaction');
-            }
-            $this->run("DELETE FROM {$this->table} WHERE id = ?", [$id]);
-            $this->run("INSERT INTO {$this->table} (id, definition) VALUES (?, ?)", [$id, $definition]);
-            if ($own && !$this->pdo->commit()) {
-                throw new StorageException('Cannot commit the transaction');
-            }
-        } catch (PDOException $e) {
-            $this->rollBack($own);
-            throw new StorageException("Task {$id} cannot be stored", previous: $e);
-        } catch (StorageException $e) {
-            $this->rollBack($own);
-            throw $e;
+        if (0 === $this->changedRows("DELETE FROM {$this->table} WHERE id = ?", [$id->value])) {
+            throw new TaskNotFoundException("Task {$id->value} is not scheduled");
         }
     }
 
-    /** Rolls back only a transaction this repository opened, and ignores a failing rollback. */
-    private function rollBack(bool $own): void
+    /**
+     * Runs a write and returns how many rows it changed, the database's own answer to "was the task there".
+     *
+     * @param list<string> $parameters
+     *
+     * @throws StorageException
+     */
+    private function changedRows(string $sql, array $parameters): int
     {
-        if ($own && $this->pdo->inTransaction()) {
-            try {
-                $this->pdo->rollBack();
-            } catch (PDOException) {
-            }
+        $statement = $this->run($sql, $parameters);
+        try {
+            return $statement->rowCount();
+        } catch (PDOException $e) {
+            throw new StorageException("Query failed: {$e->getMessage()}", previous: $e);
         }
     }
 

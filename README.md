@@ -166,7 +166,10 @@ $this->scheduler->disable(new TaskId('invoices-remind'));
 $this->scheduler->remove(new TaskId('invoices-remind'));
 ```
 
-The next tick picks the change up. An id defined in YAML cannot be changed this way
+The next tick picks the change up. `schedule()` only adds: an id that is already scheduled throws
+`TaskConflictException`, and the database decides it, so two processes adding the same id get one success and
+one conflict. To change a task, remove it and schedule it again. `disable()` and `remove()` throw
+`TaskNotFoundException` for an id that is not scheduled. An id defined in YAML cannot be changed this way
 (`TaskNotWritableException`). Outside Laravel, the table is:
 
 ```sql

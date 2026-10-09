@@ -6,6 +6,8 @@ use PHPUnit\Framework\TestCase;
 use Scheduling\Capability\Fulfilment;
 use Scheduling\Exception\InvalidTaskException;
 use Scheduling\Exception\StorageException;
+use Scheduling\Exception\TaskConflictException;
+use Scheduling\Exception\TaskNotFoundException;
 use Scheduling\Exception\TaskNotWritableException;
 use Scheduling\Scheduler;
 use Scheduling\Task\CompositeTaskSource;
@@ -21,6 +23,8 @@ final class SchedulerTest extends TestCase
      * @throws InvalidTaskException
      * @throws StorageException
      * @throws TaskNotWritableException
+     * @throws TaskConflictException
+     * @throws TaskNotFoundException
      */
     public function testWritesGoThroughToTheRuntimeRepository(): void
     {
@@ -40,6 +44,7 @@ final class SchedulerTest extends TestCase
     /**
      * @throws StorageException
      * @throws TaskNotWritableException
+     * @throws TaskConflictException
      */
     public function testRefusesToScheduleAnIdOwnedByAReadOnlySource(): void
     {
@@ -55,6 +60,7 @@ final class SchedulerTest extends TestCase
      * @throws InvalidTaskException
      * @throws StorageException
      * @throws TaskNotWritableException
+     * @throws TaskNotFoundException
      */
     public function testRefusesToDisableAnIdOwnedByAReadOnlySource(): void
     {
@@ -69,6 +75,7 @@ final class SchedulerTest extends TestCase
      * @throws InvalidTaskException
      * @throws StorageException
      * @throws TaskNotWritableException
+     * @throws TaskNotFoundException
      */
     public function testRefusesToRemoveAnIdOwnedByAReadOnlySource(): void
     {
@@ -83,6 +90,7 @@ final class SchedulerTest extends TestCase
      * @throws InvalidTaskException
      * @throws StorageException
      * @throws TaskNotWritableException
+     * @throws TaskNotFoundException
      */
     public function testAnIdOwnedByTheRuntimeRepositoryIsWritable(): void
     {
@@ -95,8 +103,38 @@ final class SchedulerTest extends TestCase
     }
 
     /**
+     * @throws StorageException
+     * @throws TaskConflictException
+     * @throws TaskNotWritableException
+     */
+    public function testSchedulingAnIdThatIsAlreadyScheduledIsAConflict(): void
+    {
+        $runtime = new InMemoryTaskRepository(['mine' => Tasks::make('mine')]);
+
+        $this->expectException(TaskConflictException::class);
+
+        new Scheduler($runtime, $runtime)->schedule(Tasks::make('mine', enabled: false));
+    }
+
+    /**
      * @throws InvalidTaskException
      * @throws StorageException
+     * @throws TaskNotFoundException
+     * @throws TaskNotWritableException
+     */
+    public function testRemovingAnUnknownIdIsNotFound(): void
+    {
+        $runtime = new InMemoryTaskRepository();
+
+        $this->expectException(TaskNotFoundException::class);
+
+        new Scheduler($runtime, $runtime)->remove(new TaskId('typo'));
+    }
+
+    /**
+     * @throws InvalidTaskException
+     * @throws StorageException
+     * @throws TaskNotFoundException
      */
     public function testWithoutARuntimeRepositoryEveryWriteIsRefused(): void
     {

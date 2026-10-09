@@ -3,6 +3,8 @@
 namespace Scheduling;
 
 use Scheduling\Exception\StorageException;
+use Scheduling\Exception\TaskConflictException;
+use Scheduling\Exception\TaskNotFoundException;
 use Scheduling\Exception\TaskNotWritableException;
 use Scheduling\Task\TaskDefinition;
 use Scheduling\Task\TaskId;
@@ -22,8 +24,10 @@ interface SchedulerInterface
     public function tasks(): TaskSet;
 
     /**
-     * Adds or replaces a task in the writable source (the database); the engine picks it up on its next tick.
+     * Adds a task to the writable source (the database); the engine picks it up on its next tick. It never replaces
+     * a task: to change one, remove it and schedule it again.
      *
+     * @throws TaskConflictException    when a task with this id is already scheduled
      * @throws TaskNotWritableException when the id belongs to a read-only source or no writable source is configured
      * @throws StorageException         when the writable source cannot store it
      */
@@ -32,6 +36,7 @@ interface SchedulerInterface
     /**
      * Keeps the task but stops it running, from the next tick on.
      *
+     * @throws TaskNotFoundException    when no task with this id is scheduled
      * @throws TaskNotWritableException when the id belongs to a read-only source or no writable source is configured
      * @throws StorageException         when the writable source cannot store it
      */
@@ -40,6 +45,7 @@ interface SchedulerInterface
     /**
      * Deletes the task from the writable source.
      *
+     * @throws TaskNotFoundException    when no task with this id is scheduled
      * @throws TaskNotWritableException when the id belongs to a read-only source or no writable source is configured
      * @throws StorageException         when the writable source cannot store it
      */
