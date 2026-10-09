@@ -19,4 +19,7 @@ enum SkipReason: string
 
     /** A run condition (TimeWindow, Environments) did not hold at the due time. */
     case ConditionNotMet = 'condition_not_met';
+
+    /** The engine held every run back, not this task: a Laravel schedule paused with `schedule:pause`. */
+    case Paused = 'paused';
 }
