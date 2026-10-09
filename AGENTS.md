@@ -30,6 +30,12 @@ folders for our own concepts (`Task/`, `Lock/`, `Run/`); third-party integration
 `Bridge/<Vendor>/`. No kind folders for our own concepts (`ValueObject/`, `Enum/`). Interfaces end in
 `Interface`, exceptions in `Exception`.
 
+## Laravel
+
+Only what Laravel itself detects follows Laravel's conventions: the service provider, the
+publishable `config/scheduling.php`, and package auto-discovery (`extra.laravel.providers` in
+`composer.json`). Every class, the Laravel bridge included, follows the rules in this file.
+
 ## Exceptions
 
 Every exception extends `abstract SchedulerException extends \Exception`, so all are checked.
