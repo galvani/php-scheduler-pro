@@ -33,6 +33,26 @@ src/
 
 Checks: `composer phpstan`, `composer cs-fix`, `composer phpmd`.
 
+## An augmenting proxy: native, polyfilled, unavailable
+
+The package is not a lowest-common-denominator wrapper. It exposes one full surface and fulfils
+each capability the best way the active engine allows: the engine does it (**native**), the package
+does it on top (**polyfilled**), or neither can (**unavailable**). Every engine reports this through
+`SchedulerEngineInterface::capabilities()`, and `Scheduler` refuses a task that needs an unavailable
+capability instead of letting it silently lose behaviour.
+
+| Capability | Laravel | crunz |
+| --- | --- | --- |
+| Overlap lock | native (our Redis mutex in Laravel's lock slot) | native (our Redis mutex as crunz's lock store) |
+| One server only | native (our mutex in Laravel's slot) | **polyfilled**: crunz has none; the package claims each minute |
+| Conditions | native (`when()`) | native (`when()`) |
+| Run record | **polyfilled** | **polyfilled** |
+| Sub-minute | unavailable | unavailable |
+| Missed-run catch-up | unavailable | unavailable |
+
+The two unavailable ones are within the design: Laravel's `everySecond()` and a Symfony Scheduler
+bridge would make sub-minute native; the drafted recovery add-on would polyfill catch-up on any engine.
+
 ## The next engine: Symfony Scheduler
 
 The package ships bridges for the two engines the assignment names, Laravel's scheduler and crunz.

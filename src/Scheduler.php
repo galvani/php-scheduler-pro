@@ -2,9 +2,12 @@
 
 namespace Scheduling;
 
+use Scheduling\Capability\Capability;
+use Scheduling\Capability\Fulfilment;
 use Scheduling\Exception\TaskNotWritableException;
 use Scheduling\Task\TaskDefinition;
 use Scheduling\Task\TaskId;
+use Scheduling\Task\TaskProblem;
 use Scheduling\Task\TaskRepositoryInterface;
 use Scheduling\Task\TaskSet;
 use Scheduling\Task\TaskSourceInterface;
@@ -59,9 +62,19 @@ final readonly class Scheduler implements SchedulerInterface
     public function registerWith(SchedulerEngineInterface $engine): TaskSet
     {
         $set = $this->tasks();
-        $refused = $engine->register($set->tasks);
+        $conditionsUnavailable = Fulfilment::Unavailable === $engine->capabilities()->of(Capability::Conditions);
+        $accepted = [];
+        $unsupported = [];
+        foreach ($set->tasks as $id => $task) {
+            if ($conditionsUnavailable && [] !== $task->conditions) {
+                $unsupported[] = new TaskProblem($id, $engine->name(), 'The engine cannot evaluate conditions');
+                continue;
+            }
+            $accepted[$id] = $task;
+        }
+        $refused = [...$unsupported, ...$engine->register($accepted)];
 
-        $registered = $set->tasks;
+        $registered = $accepted;
         foreach ($refused as $problem) {
             if (null !== $problem->taskId) {
                 unset($registered[$problem->taskId]);

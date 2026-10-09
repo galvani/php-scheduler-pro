@@ -4,6 +4,9 @@ namespace Scheduling\Bridge\Laravel;
 
 use DateTimeImmutable;
 use Illuminate\Console\Scheduling\Schedule;
+use Scheduling\Capability\Capability;
+use Scheduling\Capability\CapabilityReport;
+use Scheduling\Capability\Fulfilment;
 use Scheduling\Exception\InvalidTaskException;
 use Scheduling\Lock\LockKey;
 use Scheduling\Run\RunListenerInterface;
@@ -24,6 +27,19 @@ final class LaravelEngine implements SchedulerEngineInterface
     public function name(): string
     {
         return 'laravel';
+    }
+
+    /** {@inheritDoc} */
+    public function capabilities(): CapabilityReport
+    {
+        return new CapabilityReport([
+            Capability::OverlapLock->value => Fulfilment::Native,
+            Capability::OneServer->value => Fulfilment::Native,
+            Capability::Conditions->value => Fulfilment::Native,
+            Capability::RunRecord->value => Fulfilment::Polyfilled,
+            Capability::SubMinute->value => Fulfilment::Unavailable,
+            Capability::MissedRunCatchUp->value => Fulfilment::Unavailable,
+        ]);
     }
 
     /** {@inheritDoc} */

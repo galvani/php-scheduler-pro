@@ -6,6 +6,9 @@ use Crunz\Event;
 use Crunz\Schedule;
 use Crunz\Task\TaskException;
 use DateTimeImmutable;
+use Scheduling\Capability\Capability;
+use Scheduling\Capability\CapabilityReport;
+use Scheduling\Capability\Fulfilment;
 use Scheduling\Exception\InvalidTaskException;
 use Scheduling\Exception\LockUnavailableException;
 use Scheduling\Lock\LockKey;
@@ -46,6 +49,19 @@ final class CrunzEngine implements SchedulerEngineInterface
     public function name(): string
     {
         return 'crunz';
+    }
+
+    /** {@inheritDoc} */
+    public function capabilities(): CapabilityReport
+    {
+        return new CapabilityReport([
+            Capability::OverlapLock->value => Fulfilment::Native,
+            Capability::OneServer->value => Fulfilment::Polyfilled,
+            Capability::Conditions->value => Fulfilment::Native,
+            Capability::RunRecord->value => Fulfilment::Polyfilled,
+            Capability::SubMinute->value => Fulfilment::Unavailable,
+            Capability::MissedRunCatchUp->value => Fulfilment::Unavailable,
+        ]);
     }
 
     /** {@inheritDoc} */
