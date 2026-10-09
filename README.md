@@ -10,7 +10,8 @@ task and no application code.
   server per minute across a cluster.
 - An existing Laravel schedule keeps running, gets the same lock without a code change, and moves into the
   package one task at a time with `php artisan scheduling:export`.
-- Laravel 12 and 13 through package auto-discovery; Symfony 7.4 and 8 through a bundle, on crunz.
+- Laravel 12 and 13 through package auto-discovery; crunz in a Symfony 7.4 or 8 app through a bundle. Both are
+  optional.
 
 > **On comments:** the code is commented more than production code would be, on purpose, for readability. It is
 > a demo meant to be read and presented, so every class, interface and public method says what it is and why it
@@ -18,9 +19,18 @@ task and no application code.
 
 ## Requirements
 
-- PHP 8.5 with `ext-redis` (phpredis), and Redis
-- `ext-pdo` for tasks stored in a database (optional)
-- Laravel 12 or 13, **or** Symfony 7.4 or 8 with `crunzphp/crunz` 3.7+ and `symfony/lock`
+- PHP 8.5 with `ext-redis` (phpredis), and a Redis server
+- `ext-pdo`, only for tasks stored in a database
+
+Nothing else. The integrations are optional; install the one your application uses:
+
+| Integration | Supported versions | What to install |
+| --- | --- | --- |
+| Laravel's scheduler | Laravel 12, 13 | nothing more: the service provider is discovered automatically |
+| crunz, in a Symfony app | Symfony 7.4, 8; crunz 3.7+ | `composer require crunzphp/crunz symfony/lock` |
+
+Asking for the crunz engine without its packages fails with a `MissingPackageException` that names the
+`composer require` to run.
 
 ## Installation
 

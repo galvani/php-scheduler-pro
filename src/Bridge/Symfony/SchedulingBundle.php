@@ -9,6 +9,7 @@ use Psr\Log\NullLogger;
 use Redis;
 use RuntimeException;
 use Scheduling\Bridge\Crunz\CrunzEngine;
+use Scheduling\Exception\MissingPackageException;
 use Scheduling\Lock\MutexInterface;
 use Scheduling\Lock\RedisMutex;
 use Scheduling\Run\RecordingRunListener;
@@ -90,9 +91,15 @@ final class SchedulingBundle extends AbstractBundle implements CompilerPassInter
      *     redis: array{host: string, port: int},
      *     database: array{enabled: bool, dsn: string|null, user: string|null, password: string|null, table: string},
      * } $config
+     *
+     * @throws MissingPackageException when crunzphp/crunz or symfony/lock is not installed
      */
     public function loadExtension(array $config, ContainerConfigurator $container, ContainerBuilder $builder): void
     {
+        RequiredPackages::assertInstalled([
+            'Crunz\\Schedule' => 'crunzphp/crunz',
+            'Symfony\\Component\\Lock\\PersistingStoreInterface' => 'symfony/lock',
+        ]);
         $services = $container->services();
         $redis = $config['redis'];
         $database = $config['database'];
