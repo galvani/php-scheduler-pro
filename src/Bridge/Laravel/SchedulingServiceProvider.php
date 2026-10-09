@@ -6,7 +6,6 @@ use DateTimeZone;
 use Illuminate\Config\Repository as Config;
 use Illuminate\Console\Events\ScheduledTaskSkipped;
 use Illuminate\Console\Scheduling\CacheEventMutex;
-use Illuminate\Console\Scheduling\CacheSchedulingMutex;
 use Illuminate\Console\Scheduling\EventMutex;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Console\Scheduling\SchedulingMutex;
@@ -79,12 +78,13 @@ final class SchedulingServiceProvider extends ServiceProvider
             $app->make(TaskIndex::class),
             $app->make(CacheEventMutex::class),
             $app->make(RunListenerInterface::class),
+            $app->make(LoggerInterface::class),
         ));
         $this->app->singleton(SchedulingMutex::class, static fn (Application $app): SchedulingMutex => new LaravelSchedulingMutex(
             $app->make(MutexInterface::class),
             $app->make(TaskIndex::class),
             $app->make(RunListenerInterface::class),
-            $app->make(CacheSchedulingMutex::class),
+            $app->make(LoggerInterface::class),
         ));
     }
 
@@ -97,6 +97,10 @@ final class SchedulingServiceProvider extends ServiceProvider
         ], 'scheduling-migrations');
 
         $this->app->make(Dispatcher::class)->listen(ScheduledTaskSkipped::class, SkippedSubscriber::class);
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([ExportCommand::class]);
+        }
 
         $this->callAfterResolving(Schedule::class, static function (Schedule $schedule, Application $app): void {
             $engine = new LaravelEngine($schedule, $app->make(RunListenerInterface::class), $app->make(TaskIndex::class));

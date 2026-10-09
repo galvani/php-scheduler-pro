@@ -6,6 +6,7 @@ use DateTimeImmutable;
 use Illuminate\Console\Scheduling\CacheEventMutex;
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\EventMutex;
+use Psr\Log\LoggerInterface;
 use Scheduling\Exception\LockUnavailableException;
 use Scheduling\Lock\LockInterface;
 use Scheduling\Lock\LockKey;
@@ -13,9 +14,19 @@ use Scheduling\Lock\MutexInterface;
 use Scheduling\Run\RunListenerInterface;
 use Scheduling\Run\SkipReason;
 
+/**
+ * Laravel's overlap-lock slot (`withoutOverlapping()`), answered by our mutex for every task in the schedule.
+ *
+ * - A task of this package locks `scheduler:task:<id>` for its max_runtime × margin, and its skips are recorded.
+ * - A task from the app's own schedule locks `scheduler:external:<Laravel's mutex name>` for the minutes the app
+ *   gave `withoutOverlapping()`, so the app's existing tasks get the reliable lock without a change to its code.
+ * - A task from the app's own schedule that runs in the background stays on Laravel's cache lock: Laravel
+ *   releases it from a separate `schedule:finish` process that never held our owner token, and our mutex
+ *   releases only by token.
+ */
 final class LaravelEventMutex implements EventMutex
 {
-    /** @var array<string, LockInterface> */
+    /** @var array<string, LockInterface> locks this process holds, by Laravel's mutex name */
     private array $held = [];
 
     public function __construct(
@@ -23,19 +34,26 @@ final class LaravelEventMutex implements EventMutex
         private readonly TaskIndex $index,
         private readonly CacheEventMutex $laravelDefault,
         private readonly RunListenerInterface $listener,
+        private readonly LoggerInterface $logger,
     ) {}
 
     /** {@inheritDoc} */
     public function create(Event $event): bool
     {
         $task = $this->index->get($event->mutexName());
-        if (null === $task) {
+        if (null === $task && $event->runInBackground) {
             return $this->laravelDefault->create($event);
         }
         try {
-            $lock = $this->mutex->acquire(LockKey::forTask($task->id), $task->lock->ttlSeconds);
-        } catch (LockUnavailableException) {
-            $this->listener->skipped($task->id, new DateTimeImmutable(), SkipReason::LockUnavailable);
+            $lock = null !== $task
+                ? $this->mutex->acquire(LockKey::forTask($task->id), $task->lock->ttlSeconds)
+                : $this->mutex->acquire(self::externalKey($event), max(1, $event->expiresAt * 60));
+        } catch (LockUnavailableException $e) {
+            if (null !== $task) {
+                $this->listener->skipped($task->id, new DateTimeImmutable(), SkipReason::LockUnavailable);
+            } else {
+                $this->logger->warning('Lock storage unreachable; the run is skipped', ['mutex' => $event->mutexName(), 'exception' => $e]);
+            }
 
             return false;
         }
@@ -51,12 +69,11 @@ final class LaravelEventMutex implements EventMutex
     public function exists(Event $event): bool
     {
         $task = $this->index->get($event->mutexName());
-        if (null === $task) {
+        if (null === $task && $event->runInBackground) {
             return $this->laravelDefault->exists($event);
         }
-
         try {
-            return $this->mutex->isLocked(LockKey::forTask($task->id));
+            return $this->mutex->isLocked(null !== $task ? LockKey::forTask($task->id) : self::externalKey($event));
         } catch (LockUnavailableException) {
             return false;
         }
@@ -65,7 +82,7 @@ final class LaravelEventMutex implements EventMutex
     /** {@inheritDoc} */
     public function forget(Event $event): void
     {
-        if (null === $this->index->get($event->mutexName())) {
+        if (null === $this->index->get($event->mutexName()) && $event->runInBackground) {
             $this->laravelDefault->forget($event);
 
             return;
@@ -77,5 +94,10 @@ final class LaravelEventMutex implements EventMutex
         } catch (LockUnavailableException) {
             // The lock expires on its own TTL.
         }
+    }
+
+    private static function externalKey(Event $event): LockKey
+    {
+        return LockKey::forExternal($event->mutexName());
     }
 }

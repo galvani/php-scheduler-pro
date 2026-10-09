@@ -33,4 +33,28 @@ final readonly class LockKey
 
         return new self("scheduler:task:{$id->value}:".$utc->format('YmdHi'));
     }
+
+    /**
+     * The overlap lock of a task the package does not define, named by the engine itself (Laravel's
+     * `framework/schedule-<sha1>` for a task in the app's own schedule): `scheduler:external:<name>`.
+     *
+     * @param string $name the engine's own lock name for the task
+     */
+    public static function forExternal(string $name): self
+    {
+        return new self("scheduler:external:{$name}");
+    }
+
+    /**
+     * The one-server claim of such a task for one minute: `scheduler:external:<name>:<YmdHi>`.
+     *
+     * @param string            $name   the engine's own lock name for the task
+     * @param DateTimeInterface $minute any moment inside the minute; converted to UTC so servers in other timezones agree
+     */
+    public static function forExternalAt(string $name, DateTimeInterface $minute): self
+    {
+        $utc = DateTimeImmutable::createFromInterface($minute)->setTimezone(new DateTimeZone('UTC'));
+
+        return new self("scheduler:external:{$name}:".$utc->format('YmdHi'));
+    }
 }
