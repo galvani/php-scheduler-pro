@@ -7,7 +7,7 @@ final readonly class AdapterOptions
     /**
      * @param array<string, array<string, mixed>> $byAdapter
      */
-    public function __construct(private array $byAdapter = []) {}
+    public function __construct(public array $byAdapter = []) {}
 
     /** @return array<string, mixed> */
     public function for(string $adapter): array

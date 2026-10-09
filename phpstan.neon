@@ -1,7 +1,11 @@
+includes:
+    - vendor/phpstan/phpstan-phpunit/extension.neon
+
 parameters:
     level: max
     paths:
         - src
+        - tests
     exceptions:
         check:
             missingCheckedExceptionInThrows: true

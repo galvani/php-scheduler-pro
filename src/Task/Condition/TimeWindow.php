@@ -7,7 +7,7 @@ use Scheduling\Exception\InvalidTaskException;
 
 final class TimeWindow implements ConditionInterface
 {
-    private const string FORMAT = '/^([01]\d|2[0-3]):[0-5]\d$/';
+    private const string FORMAT = '/^([01]\d|2[0-3]):[0-5]\d$/D';
 
     public private(set) string $from {
         /** @throws InvalidTaskException */

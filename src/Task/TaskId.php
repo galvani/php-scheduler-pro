@@ -8,7 +8,7 @@ final class TaskId
 {
     public private(set) string $value {
         /** @throws InvalidTaskException */
-        set => preg_match('/^[a-z0-9][a-z0-9._-]{0,99}$/', $value)
+        set => preg_match('/^[a-z0-9][a-z0-9._-]{0,99}$/D', $value)
             ? $value
             : throw new InvalidTaskException("Invalid task id: {$value}");
     }

@@ -4,6 +4,7 @@ namespace Scheduling;
 
 use Scheduling\Capability\Capability;
 use Scheduling\Capability\Fulfilment;
+use Scheduling\Exception\StorageException;
 use Scheduling\Exception\TaskNotWritableException;
 use Scheduling\Task\TaskDefinition;
 use Scheduling\Task\TaskId;
@@ -16,7 +17,7 @@ final readonly class Scheduler implements SchedulerInterface
 {
     public function __construct(
         private TaskSourceInterface $source,
-        private TaskRepositoryInterface $runtime,
+        private ?TaskRepositoryInterface $runtime = null,
     ) {}
 
     /** {@inheritDoc} */
@@ -29,33 +30,33 @@ final readonly class Scheduler implements SchedulerInterface
      * {@inheritDoc}
      *
      * @throws TaskNotWritableException
+     * @throws StorageException
      */
     public function schedule(TaskDefinition $task): void
     {
-        $this->assertWritable($task->id);
-        $this->runtime->save($task);
+        $this->writable($task->id)->save($task);
     }
 
     /**
      * {@inheritDoc}
      *
      * @throws TaskNotWritableException
+     * @throws StorageException
      */
     public function disable(TaskId $id): void
     {
-        $this->assertWritable($id);
-        $this->runtime->disable($id);
+        $this->writable($id)->disable($id);
     }
 
     /**
      * {@inheritDoc}
      *
      * @throws TaskNotWritableException
+     * @throws StorageException
      */
     public function remove(TaskId $id): void
     {
-        $this->assertWritable($id);
-        $this->runtime->remove($id);
+        $this->writable($id)->remove($id);
     }
 
     /** {@inheritDoc} */
@@ -85,12 +86,17 @@ final readonly class Scheduler implements SchedulerInterface
     }
 
     /** @throws TaskNotWritableException */
-    private function assertWritable(TaskId $id): void
+    private function writable(TaskId $id): TaskRepositoryInterface
     {
+        if (null === $this->runtime) {
+            throw new TaskNotWritableException('No writable task source is configured');
+        }
         $everywhere = $this->source->load()->tasks;
         $runtime = $this->runtime->load()->tasks;
         if (isset($everywhere[$id->value]) && !isset($runtime[$id->value])) {
             throw new TaskNotWritableException("Task {$id->value} is defined in a read-only source");
         }
+
+        return $this->runtime;
     }
 }

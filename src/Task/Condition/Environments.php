@@ -8,7 +8,7 @@ final readonly class Environments implements ConditionInterface
 {
     /** @param non-empty-list<string> $allowed */
     public function __construct(
-        private array $allowed,
+        public array $allowed,
         private string $current,
     ) {}
 

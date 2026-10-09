@@ -3,19 +3,26 @@
     "type": "library",
     "require": {
         "php": ">=8.5",
-        "dragonmantank/cron-expression": "^3.4"
+        "dragonmantank/cron-expression": "^3.4",
+        "psr/log": "^3.0",
+        "symfony/yaml": "^7.4 || ^8.0"
     },
     "require-dev": {
-        "illuminate/console": "^12.0",
-        "illuminate/support": "^12.0",
+        "illuminate/console": "^12.0 || ^13.0",
+        "illuminate/support": "^12.0 || ^13.0",
         "crunzphp/crunz": "^3.7",
-        "symfony/lock": "^7.0",
+        "symfony/lock": "^7.4 || ^8.0",
+        "symfony/framework-bundle": "^7.4 || ^8.0",
+        "orchestra/testbench": "^11.0",
+        "phpunit/phpunit": "^13.0",
         "friendsofphp/php-cs-fixer": "^3.89",
         "phpmd/phpmd": "^2.15",
-        "phpstan/phpstan": "^2.1"
+        "phpstan/phpstan": "^2.1",
+        "phpstan/phpstan-phpunit": "^2.0"
     },
     "suggest": {
         "ext-redis": "Needed by Scheduling\\Lock\\RedisMutex",
+        "ext-pdo": "Needed by Scheduling\\Task\\PdoTaskRepository",
         "illuminate/console": "Needed by Scheduling\\Bridge\\Laravel",
         "crunzphp/crunz": "Needed by Scheduling\\Bridge\\Crunz",
         "symfony/lock": "Needed by Scheduling\\Bridge\\Crunz"
@@ -23,7 +30,7 @@
     "conflict": {
         "illuminate/console": "<12.0",
         "crunzphp/crunz": "<3.7",
-        "symfony/lock": "<7.0"
+        "symfony/lock": "<7.4"
     },
     "autoload": {
         "psr-4": {
@@ -36,6 +43,12 @@
         "phpmd": "XDEBUG_MODE=off ./vendor/bin/phpmd src ansi phpmd.xml",
         "cs-check": "XDEBUG_MODE=off vendor/bin/php-cs-fixer fix --dry-run --diff",
         "post-install-cmd": "git config core.hooksPath .githooks",
-        "post-update-cmd": "git config core.hooksPath .githooks"
+        "post-update-cmd": "git config core.hooksPath .githooks",
+        "test": "XDEBUG_MODE=off vendor/bin/phpunit"
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Scheduling\\Tests\\": "tests/"
+        }
     }
 }
