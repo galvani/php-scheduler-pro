@@ -705,10 +705,7 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *     tasks_file?: scalar|Param|null,
  *     console_binary?: scalar|Param|null,
  *     host?: scalar|Param|null, // Default: null
- *     redis?: array{
- *         host?: scalar|Param|null, // Default: "127.0.0.1"
- *         port?: int|Param, // Default: 6379
- *     },
+ *     redis?: scalar|Param|null,
  *     database?: array{
  *         enabled?: bool|Param, // Default: false
  *         dsn?: scalar|Param|null, // Default: null

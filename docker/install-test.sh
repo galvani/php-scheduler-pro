@@ -106,7 +106,7 @@ scheduling:
     tasks_file: '%kernel.project_dir%/config/scheduling.yaml'
     console_binary: 'php %kernel.project_dir%/bin/console'
     host: '%env(SCHEDULING_HOST)%'
-    redis: {host: '$redis_host', port: $redis_port}
+    redis: 'redis://$redis_host:$redis_port'
 YAML
     mkdir -p src/Command tasks
     cat > src/Command/MarkCommand.php <<'PHP'

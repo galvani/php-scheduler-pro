@@ -71,7 +71,7 @@ Scheduling\Bridge\Symfony\SchedulingBundle::class => ['all' => true],
 scheduling:
     tasks_file: '%kernel.project_dir%/config/scheduling.yaml'
     console_binary: 'php %kernel.project_dir%/bin/console'
-    redis: {host: 127.0.0.1, port: 6379}
+    redis: '%env(REDIS_URL)%' # the app's own Redis: a DSN such as redis://127.0.0.1:6379, or '@app.redis'
 ```
 
 Point crunz at a tasks file that returns the bundle's schedule:
@@ -199,14 +199,14 @@ same deploy, or it runs twice.
 | Key | Env | Default | Meaning |
 | --- | --- | --- | --- |
 | `tasks_file` | `SCHEDULING_TASKS_FILE` | `base_path('scheduling.yaml')` | the YAML tasks file |
-| `redis` | `SCHEDULING_REDIS_CONNECTION` | `default` | the Laravel Redis connection to read host, credentials and database from; phpredis; the app's key prefix is not applied |
+| `redis` | `SCHEDULING_REDIS_CONNECTION` | `scheduler` | the Laravel Redis connection the scheduler uses (phpredis). `scheduler` is added for you as a copy of the app's `default` connection without its key prefix; a connection with a prefix is refused, because the prefix would land on every lock key |
 | `host` | `SCHEDULING_HOST` | the machine's hostname | the name recorded with each run |
 | `database.enabled` | `SCHEDULING_DATABASE` | `false` | read and write tasks in a table too |
 | `database.connection` | | the default connection | the Laravel database connection |
 | `database.table` | | `scheduler_tasks` | the table |
 
 **Symfony**, `scheduling:` in `config/packages/scheduling.yaml`: `tasks_file` and `console_binary` (required),
-`host`, `redis.host`, `redis.port`, and `database.enabled`, `dsn`, `user`, `password`, `table`.
+`redis` (required: the app's own Redis as a DSN, usually `'%env(REDIS_URL)%'`, or `'@service_id'` for a phpredis `Redis` service without a key prefix), `host`, and `database.enabled`, `dsn`, `user`, `password`, `table`.
 
 ## Engines
 

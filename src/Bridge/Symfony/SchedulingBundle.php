@@ -35,7 +35,8 @@ use function Symfony\Component\DependencyInjection\Loader\Configurator\service;
 
 /**
  * Wires the package into a Symfony application on the crunz engine: the YAML and optional database task sources,
- * the Redis mutex and run record, Scheduler and CrunzEngine. Configured under `scheduling:`; every service is
+ * the Redis mutex and run record, Scheduler and CrunzEngine. Configured under `scheduling:`; `redis` is the app's
+ * own Redis, a DSN or `@service_id`, see RedisConnection. Every service is
  * private except CrunzTasks, which the crunz tasks file fetches. Symfony's own Scheduler is not used: a Symfony
  * app runs this package on crunz.
  */
@@ -57,13 +58,7 @@ final class SchedulingBundle extends AbstractBundle implements CompilerPassInter
                 ->scalarNode('tasks_file')->isRequired()->cannotBeEmpty()->end()
                 ->scalarNode('console_binary')->isRequired()->cannotBeEmpty()->end()
                 ->scalarNode('host')->defaultNull()->end()
-                ->arrayNode('redis')
-                    ->addDefaultsIfNotSet()
-                    ->children()
-                        ->scalarNode('host')->defaultValue('127.0.0.1')->end()
-                        ->integerNode('port')->defaultValue(6379)->end()
-                    ->end()
-                ->end()
+                ->scalarNode('redis')->isRequired()->cannotBeEmpty()->end()
                 ->arrayNode('database')
                     ->addDefaultsIfNotSet()
                     ->validate()
@@ -88,7 +83,7 @@ final class SchedulingBundle extends AbstractBundle implements CompilerPassInter
      *     tasks_file: string,
      *     console_binary: string,
      *     host: string|null,
-     *     redis: array{host: string, port: int},
+     *     redis: string,
      *     database: array{enabled: bool, dsn: string|null, user: string|null, password: string|null, table: string},
      * } $config
      *
@@ -101,10 +96,17 @@ final class SchedulingBundle extends AbstractBundle implements CompilerPassInter
             'Symfony\\Component\\Lock\\PersistingStoreInterface' => 'symfony/lock',
         ]);
         $services = $container->services();
-        $redis = $config['redis'];
         $database = $config['database'];
 
-        $services->set(self::REDIS, Redis::class)->call('connect', [$redis['host'], $redis['port']]);
+        if (str_starts_with($config['redis'], '@')) {
+            $services->set(self::REDIS, Redis::class)
+                ->factory([RedisConnection::class, 'unprefixed'])
+                ->args([service(substr($config['redis'], 1)), 'service '.substr($config['redis'], 1), service(self::LOGGER)]);
+        } else {
+            $services->set(self::REDIS, Redis::class)
+                ->factory([RedisConnection::class, 'fromDsn'])
+                ->args([$config['redis'], service(self::LOGGER)]);
+        }
         $services->set(MutexInterface::class, RedisMutex::class)->args([service(self::REDIS)]);
         $services->set(RunRepositoryInterface::class, RedisRunRepository::class)->args([service(self::REDIS)]);
         $services->set(TaskDefinitionMapper::class)->args([

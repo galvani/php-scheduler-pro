@@ -45,6 +45,7 @@ final class SchedulingServiceProvider extends ServiceProvider
 {
     private const string CONFIG_PATH = __DIR__.'/../../../config/scheduling.php';
     private const string REDIS = 'scheduling.redis';
+    private const string DEFAULT_CONNECTION = 'scheduler';
     private const string MIGRATION = '2026_10_09_000000_create_scheduler_tasks_table.php';
 
     /**
@@ -53,6 +54,7 @@ final class SchedulingServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->mergeConfigFrom(self::CONFIG_PATH, 'scheduling');
+        $this->app->beforeResolving('redis', static fn (string $abstract, array $parameters, Application $app) => self::addSchedulerConnection($app));
 
         $this->app->singleton(self::REDIS, static fn (Application $app): Redis => self::redis($app));
         $this->app->singleton(MutexInterface::class, static fn (Application $app): MutexInterface => new RedisMutex(self::client($app)));
@@ -124,12 +126,30 @@ final class SchedulingServiceProvider extends ServiceProvider
     }
 
     /**
-     * The scheduler's own phpredis connection, opened from the Laravel Redis connection named in the config
-     * (host, port, credentials, database, TLS) but without the application's key prefix: every engine and every
-     * server must use the same lock keys, and Laravel would otherwise put `<app>-database-` in front of them.
-     * It is a connection of its own, not bound as `Redis`, so the application's own Redis client is untouched.
-     * When Redis is down at connect time it is logged and an unconnected client is returned, so every lock call
-     * fails as LockUnavailableException and the run is skipped, as on any other Redis failure.
+     * Adds the `scheduler` Redis connection, a copy of the app's `default` connection without its key prefix, unless
+     * the app defines one. It runs just before Laravel builds its RedisManager, because the manager reads its
+     * connections once, when it is built, and anything in the app may build it before the scheduler needs it.
+     *
+     * @throws BindingResolutionException
+     */
+    private static function addSchedulerConnection(Application $app): void
+    {
+        $config = $app->make(Config::class);
+        $default = $config->get('database.redis.default');
+        if (!$config->has('database.redis.'.self::DEFAULT_CONNECTION) && is_array($default)) {
+            $config->set('database.redis.'.self::DEFAULT_CONNECTION, [...$default, 'prefix' => '']);
+        }
+    }
+
+    /**
+     * The scheduler's Redis client: the Laravel-managed client of the connection named in the config, shared with
+     * anything else in the app that uses that connection.
+     *
+     * The default name, `scheduler`, is the connection addSchedulerConnection() derives from the app's `default`
+     * one: the same host, credentials and database, without the key prefix Laravel puts on every connection. A prefix would be added to every lock key, and servers on another engine or another app would no longer
+     * share the locks, so a connection with a prefix is refused. When Redis is down at connect time it is logged
+     * and an unconnected client is returned, so every lock call fails as LockUnavailableException and the run is
+     * skipped, as on any other Redis failure.
      *
      * @throws BindingResolutionException
      */
@@ -137,18 +157,21 @@ final class SchedulingServiceProvider extends ServiceProvider
     {
         $name = $app->make(Config::class)->string('scheduling.redis');
         try {
-            $client = $app->make(RedisManager::class)->resolve($name)->client();
+            $client = $app->make(RedisManager::class)->connection($name)->client();
             if (!$client instanceof Redis) {
                 throw new InvalidArgumentException("Redis connection \"{$name}\" must use the phpredis client, got ".get_debug_type($client));
             }
-            $client->setOption(Redis::OPT_PREFIX, '');
-
-            return $client;
+            $prefix = $client->getOption(Redis::OPT_PREFIX);
         } catch (RedisException $e) {
             $app->make(LoggerInterface::class)->warning('Scheduler Redis unreachable; runs that need a lock are skipped', ['connection' => $name, 'exception' => $e]);
 
             return new Redis();
         }
+        if (is_string($prefix) && '' !== $prefix) {
+            throw new InvalidArgumentException("Redis connection \"{$name}\" adds the key prefix \"{$prefix}\" to every key. The scheduler needs a connection without a prefix, so every server and engine shares the lock keys: give it its own connection with 'prefix' => '' in config/database.php and set SCHEDULING_REDIS_CONNECTION.");
+        }
+
+        return $client;
     }
 
     /**

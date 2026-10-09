@@ -2,7 +2,9 @@
 
 namespace Scheduling\Tests\Bridge\Symfony;
 
+use Closure;
 use Exception;
+use InvalidArgumentException;
 use PDO;
 use PDOException;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -12,12 +14,17 @@ use RedisException;
 use Scheduling\Bridge\Symfony\CrunzTasks;
 use Scheduling\Bridge\Symfony\SchedulingBundle;
 use Scheduling\Exception\InvalidTaskException;
+use Scheduling\Exception\LockUnavailableException;
 use Scheduling\Exception\StorageException;
 use Scheduling\Exception\TaskNotWritableException;
+use Scheduling\Lock\LockKey;
+use Scheduling\Lock\MutexInterface;
 use Scheduling\SchedulerInterface;
+use Scheduling\Task\TaskId;
 use Scheduling\Tests\RedisConnection;
 use Scheduling\Tests\Run\CollectingLogger;
 use Scheduling\Tests\Task\Tasks;
+use Symfony\Component\Cache\Adapter\RedisAdapter;
 use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 use Symfony\Component\Config\Definition\Processor;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
@@ -28,7 +35,7 @@ use Symfony\Component\Filesystem\Filesystem;
 
 final class SchedulingBundleTest extends TestCase
 {
-    private const array REQUIRED = ['tasks_file' => '/tasks.yaml', 'console_binary' => 'php /app/bin/console'];
+    private const array REQUIRED = ['tasks_file' => '/tasks.yaml', 'console_binary' => 'php /app/bin/console', 'redis' => 'redis://127.0.0.1:6379'];
 
     private Redis $redis;
 
@@ -69,8 +76,8 @@ final class SchedulingBundleTest extends TestCase
         self::assertSame([
             'tasks_file' => '/tasks.yaml',
             'console_binary' => 'php /app/bin/console',
+            'redis' => 'redis://127.0.0.1:6379',
             'host' => null,
-            'redis' => ['host' => '127.0.0.1', 'port' => 6379],
             'database' => ['enabled' => false, 'dsn' => null, 'user' => null, 'password' => null, 'table' => 'scheduler_tasks'],
         ], $config);
     }
@@ -91,9 +98,12 @@ final class SchedulingBundleTest extends TestCase
     /** @return iterable<string, array{array<string, mixed>}> */
     public static function invalidConfigs(): iterable
     {
-        yield 'tasks_file missing' => [['console_binary' => 'php bin/console']];
-        yield 'console_binary missing' => [['tasks_file' => '/tasks.yaml']];
-        yield 'console_binary empty' => [['tasks_file' => '/tasks.yaml', 'console_binary' => '']];
+        yield 'tasks_file missing' => [['console_binary' => 'php bin/console', 'redis' => 'redis://r']];
+        yield 'console_binary missing' => [['tasks_file' => '/tasks.yaml', 'redis' => 'redis://r']];
+        yield 'console_binary empty' => [['tasks_file' => '/tasks.yaml', 'console_binary' => '', 'redis' => 'redis://r']];
+        yield 'redis missing' => [['tasks_file' => '/tasks.yaml', 'console_binary' => 'php bin/console']];
+        yield 'redis empty' => [['tasks_file' => '/tasks.yaml', 'console_binary' => 'php bin/console', 'redis' => '']];
+        yield 'old redis host and port' => [[...self::REQUIRED, 'redis' => ['host' => '127.0.0.1', 'port' => 6379]]];
         yield 'database enabled without dsn' => [[...self::REQUIRED, 'database' => ['enabled' => true]]];
     }
 
@@ -102,7 +112,7 @@ final class SchedulingBundleTest extends TestCase
      */
     public function testCrunzTasksIsTheOnlyPublicService(): void
     {
-        $kernel = $this->boot(['tasks_file' => $this->tasksFile(''), 'console_binary' => 'php bin/console']);
+        $kernel = $this->boot([...$this->connection(), 'tasks_file' => $this->tasksFile(''), 'console_binary' => 'php bin/console']);
 
         self::assertSame([CrunzTasks::class], $kernel->visibility->publicIds);
     }
@@ -187,6 +197,102 @@ final class SchedulingBundleTest extends TestCase
     }
 
     /**
+     * @throws Exception
+     * @throws RedisException
+     */
+    public function testDsnConnectionWritesTheRunRecordUnderTheUnprefixedKey(): void
+    {
+        $kernel = $this->boot([...$this->connection(), 'console_binary' => 'php /app/bin/console',
+            'tasks_file' => $this->tasksFile($this->row($this->id, 'app:hello'))]);
+
+        foreach ($this->crunzTasks($kernel)->schedule()->events()[0]->beforeCallbacks() as $callback) {
+            $callback();
+        }
+
+        self::assertSame(1, $this->redis->lLen("scheduler:runs:{$this->id}"));
+    }
+
+    /**
+     * @throws Exception
+     * @throws RedisException
+     */
+    public function testServiceReferenceReusesTheAppsOwnRedis(): void
+    {
+        $kernel = $this->boot($this->withRedis('@app.redis'), ['scheduling.redis', 'app.redis'], appServices: function (ContainerBuilder $container): void {
+            $container->register('app.redis', Redis::class)
+                ->addMethodCall('connect', [$this->redis->getHost(), $this->redis->getPort()]);
+        });
+
+        self::assertSame($kernel->getContainer()->get('app.redis'), $kernel->getContainer()->get('scheduling.redis'));
+    }
+
+    /** @throws Exception */
+    public function testServiceWithAKeyPrefixIsRefused(): void
+    {
+        $kernel = $this->boot($this->withRedis('@app.redis'), ['scheduling.redis'], appServices: function (ContainerBuilder $container): void {
+            $container->register('app.redis', Redis::class)
+                ->addMethodCall('connect', [$this->redis->getHost(), $this->redis->getPort()])
+                ->addMethodCall('setOption', [Redis::OPT_PREFIX, 'app:']);
+        });
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('service app.redis adds the key prefix "app:"');
+        $this->expectExceptionMessage('without a key prefix');
+
+        $kernel->getContainer()->get('scheduling.redis');
+    }
+
+    /**
+     * @throws Exception
+     * @throws LockUnavailableException
+     */
+    public function testDsnToADeadRedisLogsAWarningAndSkipsTheLock(): void
+    {
+        $kernel = $this->boot($this->withRedis('redis://127.0.0.1:1'), [MutexInterface::class], withLogger: true);
+        $mutex = $kernel->getContainer()->get(MutexInterface::class);
+        self::assertInstanceOf(MutexInterface::class, $mutex);
+
+        try {
+            $mutex->acquire(LockKey::forTask(new TaskId($this->id)), 30);
+            self::fail('The lock must be unavailable');
+        } catch (LockUnavailableException) {
+            $this->assertUnreachableWarning($kernel);
+        }
+    }
+
+    /**
+     * @throws Exception
+     * @throws LockUnavailableException
+     */
+    public function testLazyServiceToADeadRedisLogsAWarningAndSkipsTheLock(): void
+    {
+        $kernel = $this->boot($this->withRedis('@app.redis'), [MutexInterface::class], withLogger: true, appServices: static function (ContainerBuilder $container): void {
+            $container->register('app.redis', Redis::class)
+                ->setFactory([RedisAdapter::class, 'createConnection'])
+                ->setArguments(['redis://127.0.0.1:1', ['lazy' => true]]);
+        });
+        $mutex = $kernel->getContainer()->get(MutexInterface::class);
+        self::assertInstanceOf(MutexInterface::class, $mutex);
+
+        try {
+            $mutex->acquire(LockKey::forTask(new TaskId($this->id)), 30);
+            self::fail('The lock must be unavailable');
+        } catch (LockUnavailableException) {
+            $this->assertUnreachableWarning($kernel);
+        }
+    }
+
+    /** @throws ServiceCircularReferenceException */
+    private function assertUnreachableWarning(TestKernel $kernel): void
+    {
+        $logger = $kernel->getContainer()->get('logger');
+        self::assertInstanceOf(CollectingLogger::class, $logger);
+        self::assertCount(1, $logger->records);
+        self::assertSame('warning', $logger->records[0]['level']);
+        self::assertSame('Scheduler Redis unreachable; runs that need a lock are skipped', $logger->records[0]['message']);
+    }
+
+    /**
      * @param array<string, mixed> $config
      *
      * @return array<mixed>
@@ -209,9 +315,9 @@ final class SchedulingBundleTest extends TestCase
      *
      * @throws Exception
      */
-    private function boot(array $scheduling, array $expose = [], bool $withLogger = false): TestKernel
+    private function boot(array $scheduling, array $expose = [], bool $withLogger = false, ?Closure $appServices = null): TestKernel
     {
-        $this->kernel = new TestKernel($scheduling, $this->directory, $withLogger, [...$expose, CrunzTasks::class]);
+        $this->kernel = new TestKernel($scheduling, $this->directory, $withLogger, [...$expose, CrunzTasks::class], $appServices);
         $this->kernel->boot();
 
         return $this->kernel;
@@ -226,10 +332,25 @@ final class SchedulingBundleTest extends TestCase
         return $tasks;
     }
 
-    /** @return array{redis: array{host: string, port: int}} */
+    /** @return array{redis: string} */
     private function connection(): array
     {
-        return ['redis' => ['host' => (string) $this->redis->getHost(), 'port' => (int) $this->redis->getPort()]];
+        return ['redis' => $this->dsn()];
+    }
+
+    private function dsn(): string
+    {
+        return 'redis://'.$this->redis->getHost().':'.$this->redis->getPort();
+    }
+
+    /**
+     * @param array<string, mixed> $scheduling
+     *
+     * @return array<string, mixed>
+     */
+    private function withRedis(string $redis, array $scheduling = []): array
+    {
+        return ['redis' => $redis, 'console_binary' => 'php /app/bin/console', 'tasks_file' => $this->tasksFile(''), ...$scheduling];
     }
 
     private function tasksFile(string $rows): string

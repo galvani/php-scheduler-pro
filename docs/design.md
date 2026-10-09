@@ -38,11 +38,14 @@ missing.**
   task and minute (`scheduler:task:<id>:<UTC YmdHi>`, an hour, never released).
 - **Keys are built in one place** (`LockKey`). Servers on different engines compute the same key for the
   same task and exclude each other; lock safety rests on the key scheme, not on which engine is enabled.
+- **The application's own Redis connection.** On Laravel the scheduler uses a Laravel-managed connection,
+  `scheduler`, added as a copy of the app's `default` connection without its key prefix; on Symfony it takes a
+  DSN (`%env(REDIS_URL)%`) or an existing `Redis` service. A connection with a key prefix is refused: the prefix
+  would be added to every lock key, and servers on another engine would no longer share the locks.
 - **Redis**: `SET key token NX PX ttl` takes the lock atomically; Lua scripts release or extend it only when
   the stored token is this holder's. A holder that dies leaves a key that expires on its own. Redis
   unreachable throws the checked `LockUnavailableException`, and the run is skipped: running twice is
-  worse than running late. The connection is the scheduler's own, without the application's key prefix,
-  so every engine sees the same keys.
+  worse than running late.
 - **Why Laravel's is unreliable:** its locks live in the cache, so `cache:clear` wipes them; atomicity
   depends on the cache driver; and its release has no owner check.
 - **A run longer than its `max_runtime`** is recorded `overran`, not `failed`: its lock may have expired
@@ -117,6 +120,12 @@ Each of these fits the interfaces without a redesign; each is beyond the assignm
   claims Laravel's own cache key so an app not yet running the package is excluded too;
 - the package as an HTTP service: the same `SchedulerInterface` over HTTP, the engine a setting of
   the service; the mutex stays a library.
+
+- **Symfony's Lock component as the mutex in a Symfony app.** A `SymfonyLockMutex implements MutexInterface`
+  wrapping the application's `LockFactory` (`framework.lock`) would make the lock whatever store the app already
+  configured: Redis, PostgreSQL advisory locks and others. `MutexInterface` stays the same; only the implementation
+  behind it becomes the framework's own. Servers on other engines share the lock only if they use the same store
+  and keys.
 
 ## Deliberately not done
 

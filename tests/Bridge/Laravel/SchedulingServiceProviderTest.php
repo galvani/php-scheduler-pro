@@ -45,7 +45,7 @@ final class SchedulingServiceProviderTest extends LaravelTestCase
 
     public function testConfigIsMergedUnderTheSchedulingKey(): void
     {
-        self::assertSame('default', config('scheduling.redis'));
+        self::assertSame('scheduler', config('scheduling.redis'));
         self::assertIsString(config('scheduling.host'));
         self::assertSame(
             ['enabled' => false, 'connection' => null, 'table' => 'scheduler_tasks'],
@@ -117,10 +117,35 @@ final class SchedulingServiceProviderTest extends LaravelTestCase
     }
 
     /** @throws BindingResolutionException */
+    public function testTheSchedulerSharesTheLaravelManagedConnection(): void
+    {
+        self::assertSame(
+            $this->laravel()->make(RedisManager::class)->connection('scheduler')->client(),
+            $this->laravel()->make('scheduling.redis'),
+        );
+        self::assertSame('', config('database.redis.scheduler.prefix'));
+        self::assertSame(config('database.redis.default.host'), config('database.redis.scheduler.host'));
+    }
+
+    /** @throws BindingResolutionException */
+    public function testAConnectionWithAKeyPrefixIsRefused(): void
+    {
+        config([
+            'database.redis.prefixed' => [...(array) config('database.redis.default'), 'prefix' => 'app-'],
+            'scheduling.redis' => 'prefixed',
+        ]);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Redis connection "prefixed" adds the key prefix "app-" to every key');
+
+        $this->laravel()->make(MutexInterface::class);
+    }
+
+    /** @throws BindingResolutionException */
     public function testClientThatIsNotPhpRedisFailsClearly(): void
     {
         $this->laravel()->singleton('redis', static fn (Application $app): RedisManager => new class($app, 'predis', []) extends RedisManager {
-            public function resolve($name = null): Connection
+            public function connection($name = null): Connection
             {
                 return new class extends Connection {
                     /** @param array<string> $channels */
@@ -135,7 +160,7 @@ final class SchedulingServiceProviderTest extends LaravelTestCase
         });
 
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Redis connection "default" must use the phpredis client, got stdClass');
+        $this->expectExceptionMessage('Redis connection "scheduler" must use the phpredis client, got stdClass');
 
         $this->laravel()->make(MutexInterface::class);
     }
