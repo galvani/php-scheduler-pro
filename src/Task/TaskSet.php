@@ -11,6 +11,5 @@ final readonly class TaskSet
     public function __construct(
         public array $tasks = [],
         public array $problems = [],
-    ) {
-    }
+    ) {}
 }

@@ -45,6 +45,7 @@ included. PHPStan enforces it (`exceptions.check` in `phpstan.neon`); a stale `@
   promoted properties.
 - Every PHP file starts with `<?php declare(strict_types=1);` on one line.
 - php-cs-fixer `@Symfony`, with `blank_line_after_opening_tag` and `linebreak_after_opening_tag` off
+  and `single_line_empty_body` on (an empty body is `{}` on the same line)
   so the line above survives: `composer cs-fix`.
 - A `use` statement for every class, including global classes and single calls; alias on a name
   clash (`use Cron\CronExpression as CronExpressionParser;`). Enforced by the fixer

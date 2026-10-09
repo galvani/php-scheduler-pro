@@ -8,6 +8,5 @@ final readonly class TaskProblem
         public ?string $taskId,
         public string $source,
         public string $reason,
-    ) {
-    }
+    ) {}
 }

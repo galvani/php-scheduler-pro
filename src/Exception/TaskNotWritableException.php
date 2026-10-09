@@ -2,6 +2,4 @@
 
 namespace Scheduling\Exception;
 
-final class TaskNotWritableException extends SchedulerException
-{
-}
+final class TaskNotWritableException extends SchedulerException {}

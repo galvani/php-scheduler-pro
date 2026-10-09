@@ -18,8 +18,7 @@ final class LaravelEventMutex implements EventMutex
         private readonly MutexInterface $mutex,
         private readonly TaskIndex $index,
         private readonly CacheEventMutex $laravelDefault,
-    ) {
-    }
+    ) {}
 
     public function create(Event $event): bool
     {

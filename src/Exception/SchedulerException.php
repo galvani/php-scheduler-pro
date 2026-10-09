@@ -4,6 +4,4 @@ namespace Scheduling\Exception;
 
 use Exception;
 
-abstract class SchedulerException extends Exception
-{
-}
+abstract class SchedulerException extends Exception {}

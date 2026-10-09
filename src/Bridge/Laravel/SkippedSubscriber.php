@@ -12,8 +12,7 @@ final readonly class SkippedSubscriber
     public function __construct(
         private RunListenerInterface $listener,
         private TaskIndex $index,
-    ) {
-    }
+    ) {}
 
     public function handle(ScheduledTaskSkipped $event): void
     {

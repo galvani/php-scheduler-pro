@@ -2,6 +2,4 @@
 
 namespace Scheduling\Exception;
 
-final class InvalidTaskException extends SchedulerException
-{
-}
+final class InvalidTaskException extends SchedulerException {}

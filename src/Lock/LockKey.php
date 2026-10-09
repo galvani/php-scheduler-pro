@@ -9,9 +9,7 @@ use Scheduling\Task\TaskId;
 
 final readonly class LockKey
 {
-    private function __construct(public string $value)
-    {
-    }
+    private function __construct(public string $value) {}
 
     public static function forTask(TaskId $id): self
     {

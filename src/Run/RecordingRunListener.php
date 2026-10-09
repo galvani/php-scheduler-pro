@@ -14,8 +14,7 @@ final class RecordingRunListener implements RunListenerInterface
         private readonly RunRepositoryInterface $runs,
         private readonly array $tasks,
         private readonly string $host,
-    ) {
-    }
+    ) {}
 
     public function started(TaskId $id, DateTimeImmutable $at): void
     {

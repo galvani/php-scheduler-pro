@@ -14,8 +14,7 @@ final readonly class Scheduler implements SchedulerInterface
     public function __construct(
         private TaskSourceInterface $source,
         private TaskRepositoryInterface $runtime,
-    ) {
-    }
+    ) {}
 
     public function tasks(): TaskSet
     {

@@ -8,9 +8,7 @@ final readonly class LaravelOptions
 {
     private const KNOWN = ['output_file'];
 
-    public function __construct(public ?string $outputFile = null)
-    {
-    }
+    public function __construct(public ?string $outputFile = null) {}
 
     /**
      * @param array<string, mixed> $raw

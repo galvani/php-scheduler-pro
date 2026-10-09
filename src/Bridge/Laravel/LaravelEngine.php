@@ -18,8 +18,7 @@ final class LaravelEngine implements SchedulerEngineInterface
         private readonly Schedule $schedule,
         private readonly RunListenerInterface $listener,
         private readonly TaskIndex $index,
-    ) {
-    }
+    ) {}
 
     public function name(): string
     {

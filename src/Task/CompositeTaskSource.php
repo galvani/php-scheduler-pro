@@ -5,9 +5,7 @@ namespace Scheduling\Task;
 final readonly class CompositeTaskSource implements TaskSourceInterface
 {
     /** @param list<TaskSourceInterface> $sources */
-    public function __construct(private array $sources)
-    {
-    }
+    public function __construct(private array $sources) {}
 
     public function load(): TaskSet
     {

@@ -13,6 +13,5 @@ final readonly class RunRecord
         public DateTimeImmutable $at,
         public string $host,
         public ?string $detail = null,
-    ) {
-    }
+    ) {}
 }

@@ -21,8 +21,7 @@ final class LaravelSchedulingMutex implements SchedulingMutex
         private readonly TaskIndex $index,
         private readonly RunListenerInterface $listener,
         private readonly CacheSchedulingMutex $laravelDefault,
-    ) {
-    }
+    ) {}
 
     public function create(Event $event, DateTimeInterface $time): bool
     {

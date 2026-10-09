@@ -21,8 +21,7 @@ final readonly class MutexStore implements PersistingStoreInterface
     public function __construct(
         private MutexInterface $mutex,
         private LockKey $key,
-    ) {
-    }
+    ) {}
 
     /** @throws LockConflictedException */
     public function save(Key $key): void

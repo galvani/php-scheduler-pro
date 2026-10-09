@@ -14,6 +14,5 @@ final readonly class TaskDefinition
         public LockPolicy $lock,
         public bool $enabled = true,
         public AdapterOptions $options = new AdapterOptions(),
-    ) {
-    }
+    ) {}
 }
