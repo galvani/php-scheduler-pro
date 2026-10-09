@@ -59,8 +59,10 @@ included. PHPStan enforces it (`exceptions.check` in `phpstan.neon`); a stale `@
 
 ## Checks
 
+- `.githooks/pre-commit` runs the fixer in check mode and PHPStan; a commit that fails either is
+  refused. `composer install` points git at it (`core.hooksPath`). Never bypass the hook.
 - `composer phpstan`: PHPStan 2.x, level max over `src`. Must be clean (1.x does not understand hooks).
-- `composer cs-fix`: must leave nothing to fix.
+- `composer cs-fix` fixes, `composer cs-check` only reports; the hook runs the check.
 - `composer phpmd`: vlm's ruleset (`phpmd.xml`), advisory. PHPMD 2.15 cannot parse PHP 8.4
   asymmetric visibility (`private(set)`) and skips those files with "Unexpected token";.
 

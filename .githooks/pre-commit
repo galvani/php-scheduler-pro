@@ -1,0 +1,5 @@
+#!/bin/sh
+set -e
+export XDEBUG_MODE=off
+vendor/bin/php-cs-fixer fix --dry-run --diff
+vendor/bin/phpstan analyse --memory-limit 3G --no-progress
