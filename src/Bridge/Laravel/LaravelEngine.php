@@ -15,6 +15,12 @@ use Scheduling\Task\Command;
 use Scheduling\Task\TaskDefinition;
 use Scheduling\Task\TaskProblem;
 
+/**
+ * The Laravel bridge. Laravel keeps deciding what is due and runs each task as an artisan command; this class
+ * registers every task with Laravel's own fluent API (cron, timezone, mutex name, withoutOverlapping, onOneServer,
+ * when, hooks). Both lock slots are answered by our mutex (LaravelEventMutex, LaravelSchedulingMutex), and the
+ * hooks feed the run record.
+ */
 final class LaravelEngine implements SchedulerEngineInterface
 {
     public function __construct(

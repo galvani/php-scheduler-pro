@@ -7,6 +7,10 @@ use Psr\Log\LoggerInterface;
 use Scheduling\Bridge\Crunz\CrunzEngine;
 use Scheduling\SchedulerInterface;
 
+/**
+ * The one public service of the Symfony bundle, called from the crunz tasks file on every tick: it registers the
+ * current task list with the crunz engine, logs each task that could not be scheduled, and returns crunz's schedule.
+ */
 final readonly class CrunzTasks
 {
     public function __construct(

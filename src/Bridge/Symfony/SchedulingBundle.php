@@ -32,6 +32,12 @@ use Symfony\Component\HttpKernel\Bundle\AbstractBundle;
 use function Symfony\Component\DependencyInjection\Loader\Configurator\inline_service;
 use function Symfony\Component\DependencyInjection\Loader\Configurator\service;
 
+/**
+ * Wires the package into a Symfony application on the crunz engine: the YAML and optional database task sources,
+ * the Redis mutex and run record, Scheduler and CrunzEngine. Configured under `scheduling:`; every service is
+ * private except CrunzTasks, which the crunz tasks file fetches. Symfony's own Scheduler is not used: a Symfony
+ * app runs this package on crunz.
+ */
 final class SchedulingBundle extends AbstractBundle implements CompilerPassInterface
 {
     private const string LOGGER = 'scheduling.logger';

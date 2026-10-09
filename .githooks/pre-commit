@@ -1,5 +1,17 @@
 #!/bin/sh
+# With Docker running: the fixer, PHPStan and the whole test suite in the project's container, against the bundled
+# Redis. Without Docker: the fixer and PHPStan on the host, as before (the tests need a Redis).
 set -e
 export XDEBUG_MODE=off
+
+if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+    status=0
+    docker compose run --rm -T tests sh -c \
+        'composer install --quiet --no-interaction --no-scripts && composer cs-check && composer phpstan && composer test' \
+        || status=$?
+    docker compose stop redis >/dev/null 2>&1 || true
+    exit "$status"
+fi
+
 vendor/bin/php-cs-fixer fix --dry-run --diff
 vendor/bin/phpstan analyse --memory-limit 3G --no-progress

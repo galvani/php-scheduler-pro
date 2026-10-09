@@ -35,6 +35,12 @@ use Scheduling\Task\TaskDefinitionMapper;
 use Scheduling\Task\TaskSourceInterface;
 use Scheduling\Task\YamlTaskSource;
 
+/**
+ * Wires the package into a Laravel 12 or 13 application, discovered automatically. It binds the task sources, the
+ * scheduler's own Redis connection, our mutex into both of Laravel's lock slots (EventMutex, SchedulingMutex) and
+ * the run record, and registers the tasks every time Laravel builds its Schedule. Publishes `config/scheduling.php`
+ * and the `scheduler_tasks` migration, and adds `scheduling:export`.
+ */
 final class SchedulingServiceProvider extends ServiceProvider
 {
     private const string CONFIG_PATH = __DIR__.'/../../../config/scheduling.php';

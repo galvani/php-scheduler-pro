@@ -1,0 +1,6 @@
+tasks:
+  hello:
+    schedule: "* * * * *"
+    command: app:hello
+    options: {from: scheduling.yaml}
+    max_runtime: 30

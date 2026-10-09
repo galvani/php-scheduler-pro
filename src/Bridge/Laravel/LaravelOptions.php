@@ -4,6 +4,10 @@ namespace Scheduling\Bridge\Laravel;
 
 use Scheduling\Exception\InvalidTaskException;
 
+/**
+ * The laravel section of a task's adapter options (`adapters: {laravel: {output_file: …}}`). An unknown key is
+ * refused as a TaskProblem instead of being ignored.
+ */
 final readonly class LaravelOptions
 {
     private const KNOWN = ['output_file'];

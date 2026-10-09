@@ -12,68 +12,87 @@ services:
   tests:
     build: .
     image: php-scheduler-pro
+    user: &user "${UID:-1000}:${GID:-1000}"
     command: ["sh", "-c", "composer install --no-interaction --no-scripts && composer test"]
     volumes:
       - .:/app
       - vendor:/app/vendor
-    environment:
+    environment: &runtime
+      HOME: /tmp
       REDIS_HOST: redis
       REDIS_PORT: "6379"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  demo-laravel:
+    image: php-scheduler-pro
+    user: *user
+    command: ["sh", "-c", "composer install --working-dir=demo/laravel --no-interaction && demo/laravel/prove.sh"]
+    volumes:
+      - .:/app
+      - demo-laravel-vendor:/app/demo/laravel/vendor
+    environment:
+      <<: *runtime
+      APP_KEY: base64:c2NoZWR1bGVyLWRlbW8ta2V5LW5vdC1hLXNlY3JldCE=
+      CACHE_STORE: file
+      SCHEDULING_HOST: demo
     depends_on:
       redis:
         condition: service_healthy
 
   demo:
     image: php-scheduler-pro
+    user: *user
     command: ["sh", "-c", "composer install --working-dir=demo/symfony --no-interaction --no-scripts && demo/symfony/prove.sh"]
     volumes:
       - .:/app
       - demo-vendor:/app/demo/symfony/vendor
       - demo-var:/app/demo/symfony/var
     environment:
-      REDIS_HOST: redis
-      REDIS_PORT: "6379"
+      <<: *runtime
     depends_on:
       redis:
         condition: service_healthy
 
   install-laravel:
     image: php-scheduler-pro
+    user: *user
     command: ["docker/install-test.sh", "laravel"]
     volumes:
       - .:/app:ro
     environment:
-      REDIS_HOST: redis
-      REDIS_PORT: "6379"
+      <<: *runtime
     depends_on:
       redis:
         condition: service_healthy
 
   install-laravel-12:
     image: php-scheduler-pro
+    user: *user
     command: ["docker/install-test.sh", "laravel", "^12.0"]
     volumes:
       - .:/app:ro
     environment:
-      REDIS_HOST: redis
-      REDIS_PORT: "6379"
+      <<: *runtime
     depends_on:
       redis:
         condition: service_healthy
 
   install-symfony:
     image: php-scheduler-pro
+    user: *user
     command: ["docker/install-test.sh", "symfony"]
     volumes:
       - .:/app:ro
     environment:
-      REDIS_HOST: redis
-      REDIS_PORT: "6379"
+      <<: *runtime
     depends_on:
       redis:
         condition: service_healthy
 
 volumes:
   vendor:
+  demo-laravel-vendor:
   demo-vendor:
   demo-var:

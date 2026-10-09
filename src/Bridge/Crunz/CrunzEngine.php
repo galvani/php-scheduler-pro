@@ -21,6 +21,15 @@ use Scheduling\Task\TaskDefinition;
 use Scheduling\Task\TaskId;
 use Scheduling\Task\TaskProblem;
 
+/**
+ * The crunz bridge. crunz keeps deciding what is due and runs each task as a subprocess; this class registers every
+ * task with crunz's own API and adds what crunz lacks:
+ *
+ * - overlap lock: native, our mutex as crunz's Symfony Lock store (MutexStore), extended while the task runs;
+ * - one server: polyfilled, the same per-minute claim Laravel's slot uses, taken in crunz's skip();
+ * - conditions: native, through crunz's when();
+ * - run record: polyfilled from before(), after() and the schedule-level onError().
+ */
 final class CrunzEngine implements SchedulerEngineInterface
 {
     private const ONE_SERVER_TTL = 3600;
