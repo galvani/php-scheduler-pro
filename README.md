@@ -13,8 +13,8 @@ The original assignment (Czech) is in `ASSIGNMENT.md`.
 
 ## The package
 
-A framework-independent scheduler component with its own mutex, and bridges to Laravel's
-scheduler and crunz. The core depends on no framework; each bridge maps the core's interfaces onto
+A framework-independent scheduler component with its own mutex, run conditions, and bridges to
+Laravel's scheduler and crunz. The core depends on no framework; each bridge maps the core's interfaces onto
 its engine.
 
 ```
@@ -76,6 +76,16 @@ These are understood and deliberately left out; each goes beyond the scope of th
   not recorded in the run record on crunz.
 - **Failure details on Laravel.** For a command task, Laravel's failure hook gives neither the exit
   code nor the exception, so the run record says `failed` without a reason.
+- **What does not port from the engines.** Conditions do: `TimeWindow` (Laravel's and crunz's
+  `between`) and `Environments` (Laravel's `environments()`) are core objects, any custom condition
+  implements `ConditionInterface`, and each bridge evaluates them through its engine's own `when()`.
+  These do not:
+  - fluent frequencies (`daily()`, `weekdays()`): they are shorthand for cron expressions, which the
+    package takes directly, so nothing is lost;
+  - sub-minute runs: only Laravel has them, crunz cannot, so they cannot be common;
+  - maintenance mode: a Laravel concept; it could become a condition;
+  - closures and raw shell commands as tasks: they cannot live in YAML or a database. A task is a
+    console command with arguments and options; shell commands could become a second command type.
 - **Designed, not built:** a `dispatch` execution mode (the engine calls our own `run-task <id>`
   command), an `enqueue` mode (the run goes to a queue), catching up missed runs, retrying failed
   ones, and a watcher that notices a run that never started.

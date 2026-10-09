@@ -81,12 +81,23 @@ final class CrunzEngine implements SchedulerEngineInterface
             ->run($this->consoleBinary.' '.$task->command->name, self::parameters($task->command))
             ->cron($task->schedule->value)
             ->timezone($task->timezone)
+            ->when(fn (): bool => $this->conditionsHold($task))
             ->skip(fn (): bool => !$this->claimMinute($id))
             ->preventOverlapping(new MutexStore($this->mutex, LockKey::forTask($id)))
             ->before(fn () => $this->listener->started($id, new DateTimeImmutable()))
             ->after(fn () => $this->listener->finished($id, new DateTimeImmutable()));
 
         $this->idsByEvent[spl_object_id($event)] = $id;
+    }
+
+    private function conditionsHold(TaskDefinition $task): bool
+    {
+        if ($task->conditionsHold()) {
+            return true;
+        }
+        $this->listener->skipped($task->id, new DateTimeImmutable(), SkipReason::ConditionNotMet);
+
+        return false;
     }
 
     /** crunz has no onOneServer; this is the same per-minute key Laravel's SchedulingMutex uses. */

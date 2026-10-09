@@ -18,7 +18,8 @@ final readonly class SkippedSubscriber
     {
         $task = $this->index->get($event->task->mutexName());
         if (null !== $task) {
-            $this->listener->skipped($task->id, new DateTimeImmutable(), SkipReason::StillRunning);
+            $reason = $task->conditionsHold() ? SkipReason::StillRunning : SkipReason::ConditionNotMet;
+            $this->listener->skipped($task->id, new DateTimeImmutable(), $reason);
         }
     }
 }

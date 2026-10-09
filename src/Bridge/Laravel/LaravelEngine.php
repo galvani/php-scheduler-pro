@@ -58,6 +58,7 @@ final class LaravelEngine implements SchedulerEngineInterface
             ->createMutexNameUsing($mutexName)
             ->withoutOverlapping((int) ceil($task->lock->ttlSeconds / 60))
             ->onOneServer()
+            ->when(fn (): bool => $task->conditionsHold())
             ->before(fn () => $this->listener->started($id, new DateTimeImmutable()))
             ->onSuccess(fn () => $this->listener->finished($id, new DateTimeImmutable()))
             ->onFailure(fn () => $this->listener->failed($id, new DateTimeImmutable(), null, null));
