@@ -20,7 +20,10 @@ final readonly class YamlTaskSource implements TaskSourceInterface
         private TaskDefinitionMapper $mapper,
     ) {}
 
-    /** {@inheritDoc} */
+    /**
+     * Never throws: a source that cannot be read, or a row that is invalid, becomes a TaskProblem
+     * in the set and every valid task is still returned.
+     */
     public function load(): TaskSet
     {
         try {

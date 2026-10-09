@@ -39,7 +39,7 @@ final class SchedulingBundle extends AbstractBundle implements CompilerPassInter
     private const string PDO = 'scheduling.pdo';
 
     /**
-     * {@inheritDoc}
+     * Generates the configuration tree builder.
      *
      * @throws RuntimeException
      */
@@ -75,7 +75,7 @@ final class SchedulingBundle extends AbstractBundle implements CompilerPassInter
     }
 
     /**
-     * {@inheritDoc}
+     * Loads the processed bundle configuration and registers the services it describes.
      *
      * @param array{
      *     tasks_file: string,
@@ -134,13 +134,17 @@ final class SchedulingBundle extends AbstractBundle implements CompilerPassInter
             ->args([service(SchedulerInterface::class), service(CrunzEngine::class), service(self::LOGGER)]);
     }
 
-    /** {@inheritDoc} */
+    /**
+     * Registers compilation passes on the container; this bundle registers itself as one.
+     */
     public function build(ContainerBuilder $container): void
     {
         $container->addCompilerPass($this);
     }
 
-    /** {@inheritDoc} */
+    /**
+     * Modifies the container before it is dumped to PHP code.
+     */
     public function process(ContainerBuilder $container): void
     {
         if ($container->has('logger')) {

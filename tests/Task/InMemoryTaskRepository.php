@@ -12,19 +12,26 @@ final class InMemoryTaskRepository implements TaskRepositoryInterface
     /** @param array<string, TaskDefinition> $tasks */
     public function __construct(private array $tasks = []) {}
 
-    /** {@inheritDoc} */
+    /**
+     * Never throws: a source that cannot be read, or a row that is invalid, becomes a TaskProblem
+     * in the set and every valid task is still returned.
+     */
     public function load(): TaskSet
     {
         return new TaskSet($this->tasks);
     }
 
-    /** {@inheritDoc} */
+    /**
+     * Inserts the task, or replaces the stored one with the same id.
+     */
     public function save(TaskDefinition $task): void
     {
         $this->tasks[$task->id->value] = $task;
     }
 
-    /** {@inheritDoc} */
+    /**
+     * Marks the task disabled; an unknown id is a no-op.
+     */
     public function disable(TaskId $id): void
     {
         $task = $this->tasks[$id->value] ?? null;
@@ -42,7 +49,9 @@ final class InMemoryTaskRepository implements TaskRepositoryInterface
         }
     }
 
-    /** {@inheritDoc} */
+    /**
+     * Deletes the task; an unknown id is a no-op.
+     */
     public function remove(TaskId $id): void
     {
         unset($this->tasks[$id->value]);

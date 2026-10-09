@@ -28,7 +28,7 @@ final readonly class RedisRunRepository implements RunRepositoryInterface
     ) {}
 
     /**
-     * {@inheritDoc}
+     * Stores one record.
      *
      * Pushes the record on the history list, trims it to the cap and updates the per-state hash in one MULTI transaction.
      */
@@ -55,7 +55,8 @@ final readonly class RedisRunRepository implements RunRepositoryInterface
     }
 
     /**
-     * {@inheritDoc}
+     * The newest record of a task in the given state, or null if there is none.
+     * Used to tell a run that ended after its max_runtime (RunState::Overran).
      *
      * Reads from the per-state hash, so it does not scan the history list.
      */

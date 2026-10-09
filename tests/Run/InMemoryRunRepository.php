@@ -12,13 +12,18 @@ final class InMemoryRunRepository implements RunRepositoryInterface
     /** @var list<RunRecord> */
     public array $records = [];
 
-    /** {@inheritDoc} */
+    /**
+     * Stores one record.
+     */
     public function append(RunRecord $record): void
     {
         $this->records[] = $record;
     }
 
-    /** {@inheritDoc} */
+    /**
+     * The newest record of a task in the given state, or null if there is none.
+     * Used to tell a run that ended after its max_runtime (RunState::Overran).
+     */
     public function lastOf(TaskId $id, RunState $state): ?RunRecord
     {
         $match = null;

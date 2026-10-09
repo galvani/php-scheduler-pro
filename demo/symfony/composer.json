@@ -1,12 +1,12 @@
 {
-    "name": "jan/scheduling-demo-symfony",
+    "name": "galvani/php-scheduler-pro-demo-symfony",
     "type": "project",
-    "description": "Symfony 8 app running jan/scheduling on the crunz engine",
+    "description": "Symfony 8 app running galvani/php-scheduler-pro on the crunz engine",
     "require": {
         "php": ">=8.5",
         "ext-redis": "*",
         "crunzphp/crunz": "^3.7",
-        "jan/scheduling": "*@dev",
+        "galvani/php-scheduler-pro": "*@dev",
         "symfony/console": "^8.0",
         "symfony/dotenv": "^8.0",
         "symfony/framework-bundle": "^8.0",

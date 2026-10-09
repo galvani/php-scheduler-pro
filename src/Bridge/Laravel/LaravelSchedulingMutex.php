@@ -31,7 +31,9 @@ final class LaravelSchedulingMutex implements SchedulingMutex
         private readonly LoggerInterface $logger,
     ) {}
 
-    /** {@inheritDoc} */
+    /**
+     * Attempts to obtain a scheduling mutex for the given event.
+     */
     public function create(Event $event, DateTimeInterface $time): bool
     {
         $task = $this->index->get($event->mutexName());
@@ -55,7 +57,9 @@ final class LaravelSchedulingMutex implements SchedulingMutex
         return $claimed;
     }
 
-    /** {@inheritDoc} */
+    /**
+     * Determines whether a scheduling mutex exists for the given event.
+     */
     public function exists(Event $event, DateTimeInterface $time): bool
     {
         $task = $this->index->get($event->mutexName());

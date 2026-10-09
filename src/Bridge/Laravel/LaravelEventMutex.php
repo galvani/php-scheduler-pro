@@ -37,7 +37,9 @@ final class LaravelEventMutex implements EventMutex
         private readonly LoggerInterface $logger,
     ) {}
 
-    /** {@inheritDoc} */
+    /**
+     * Attempts to obtain an event mutex for the given event.
+     */
     public function create(Event $event): bool
     {
         $task = $this->index->get($event->mutexName());
@@ -65,7 +67,9 @@ final class LaravelEventMutex implements EventMutex
         return true;
     }
 
-    /** {@inheritDoc} */
+    /**
+     * Determines whether an event mutex exists for the given event.
+     */
     public function exists(Event $event): bool
     {
         $task = $this->index->get($event->mutexName());
@@ -79,7 +83,9 @@ final class LaravelEventMutex implements EventMutex
         }
     }
 
-    /** {@inheritDoc} */
+    /**
+     * Clears the event mutex for the given event.
+     */
     public function forget(Event $event): void
     {
         if (null === $this->index->get($event->mutexName()) && $event->runInBackground) {

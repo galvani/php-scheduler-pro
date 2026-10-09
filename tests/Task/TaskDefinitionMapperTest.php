@@ -169,7 +169,11 @@ final class TaskDefinitionMapperTest extends TestCase
     public function testToArrayRefusesACustomCondition(): void
     {
         $custom = new class implements ConditionInterface {
-            /** {@inheritDoc} */
+            /**
+             * Whether the condition holds at the given moment.
+             *
+             * @param DateTimeImmutable $now in the task's time zone
+             */
             public function isSatisfied(DateTimeImmutable $now): bool
             {
                 return true;

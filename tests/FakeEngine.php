@@ -20,19 +20,31 @@ final class FakeEngine implements SchedulerEngineInterface
         private readonly array $refusals = [],
     ) {}
 
-    /** {@inheritDoc} */
+    /**
+     * The engine's name; also the key of its section in a task's adapter options (`adapters: {laravel: …}`).
+     *
+     * @return non-empty-string
+     */
     public function name(): string
     {
         return 'fake';
     }
 
-    /** {@inheritDoc} */
+    /**
+     * What the engine does itself, what this package adds on top, and what neither can do.
+     */
     public function capabilities(): CapabilityReport
     {
         return new CapabilityReport([Capability::Conditions->value => $this->conditions]);
     }
 
-    /** {@inheritDoc} */
+    /**
+     * Registers the tasks with the engine for the current tick. A disabled task is not registered.
+     *
+     * @param array<string, TaskDefinition> $tasks keyed by task id
+     *
+     * @return list<TaskProblem> tasks the engine refused, e.g. invalid adapter options; the rest are registered
+     */
     public function register(array $tasks): array
     {
         $this->registered = $tasks;

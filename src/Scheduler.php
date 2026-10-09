@@ -31,7 +31,8 @@ final readonly class Scheduler implements SchedulerInterface
     ) {}
 
     /**
-     * {@inheritDoc}
+     * Every task from every source (YAML, database), with the problems found while reading them.
+     * A bad row or an unreadable source is reported, never thrown: the other tasks still run.
      *
      * Loads the source on every call; nothing is cached.
      */
@@ -41,7 +42,7 @@ final readonly class Scheduler implements SchedulerInterface
     }
 
     /**
-     * {@inheritDoc}
+     * Adds or replaces a task in the writable source (the database); the engine picks it up on its next tick.
      *
      * Saves the definition to the writable repository after the writability check.
      *
@@ -54,7 +55,7 @@ final readonly class Scheduler implements SchedulerInterface
     }
 
     /**
-     * {@inheritDoc}
+     * Keeps the task but stops it running, from the next tick on.
      *
      * Delegates to the writable repository, which rewrites the stored definition with enabled=false.
      *
@@ -67,7 +68,7 @@ final readonly class Scheduler implements SchedulerInterface
     }
 
     /**
-     * {@inheritDoc}
+     * Deletes the task from the writable source.
      *
      * @throws TaskNotWritableException
      * @throws StorageException
@@ -78,11 +79,15 @@ final readonly class Scheduler implements SchedulerInterface
     }
 
     /**
-     * {@inheritDoc}
+     * Gives the current task list to an engine. A task needing a capability the engine reports as
+     * unavailable is refused before the engine sees it; tasks the engine itself refuses come back as problems.
      *
      * A task with conditions is refused, with the engine's name as problem source, when the engine reports
      * Capability::Conditions as unavailable. Tasks named in the engine's own refusals are dropped from the
      * returned tasks; a refusal without a task id is only reported.
+     *
+     * @return TaskSet the tasks the engine registered, and every problem: from the sources, the
+     *                 capability check and the engine
      */
     public function registerWith(SchedulerEngineInterface $engine): TaskSet
     {

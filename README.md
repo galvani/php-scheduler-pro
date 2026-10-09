@@ -11,6 +11,10 @@ interface, which alternatives existed, and what each choice costs.
 
 The original assignment (Czech) is in `ASSIGNMENT.md`.
 
+> **On comments:** the code is commented more than production code would be, on purpose, for
+> readability. It is a demo meant to be read and presented, so every class, interface and public
+> method says what it is and why it exists.
+
 ## The package
 
 A framework-independent scheduler component with its own mutex, run conditions, a run record, and
@@ -71,7 +75,7 @@ changed through the database.
 ### Laravel 12 and 13
 
 ```bash
-composer require jan/scheduling
+composer require galvani/php-scheduler-pro
 php artisan vendor:publish --tag=scheduling-config        # config/scheduling.php
 ```
 

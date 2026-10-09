@@ -96,13 +96,21 @@ final class ExistingScheduleTest extends LaravelTestCase
         $logger = new CollectingLogger();
         $this->laravel()->instance(LoggerInterface::class, $logger);
         $this->laravel()->instance(MutexInterface::class, new class implements MutexInterface {
-            /** {@inheritDoc} */
+            /**
+             * Atomic: either this call holds the key afterwards, or it returns null.
+             *
+             * @param positive-int $ttlSeconds the key frees itself after this, even if the holder never releases it
+             *
+             * @return LockInterface|null null when another holder has the key
+             */
             public function acquire(LockKey $key, int $ttlSeconds): ?LockInterface
             {
                 throw new LockUnavailableException('Redis is down');
             }
 
-            /** {@inheritDoc} */
+            /**
+             * Whether any holder has the key now; used by engines that ask before they lock.
+             */
             public function isLocked(LockKey $key): bool
             {
                 throw new LockUnavailableException('Redis is down');

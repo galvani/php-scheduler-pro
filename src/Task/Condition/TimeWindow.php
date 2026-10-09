@@ -36,9 +36,11 @@ final class TimeWindow implements ConditionInterface
     }
 
     /**
-     * {@inheritDoc}
+     * Whether the condition holds at the given moment.
      *
      * Compares "H:i" strings, which sort correctly because the format is fixed-width.
+     *
+     * @param DateTimeImmutable $now in the task's time zone
      */
     public function isSatisfied(DateTimeImmutable $now): bool
     {

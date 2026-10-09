@@ -17,9 +17,13 @@ final readonly class RedisMutex implements MutexInterface
     public function __construct(private Redis $redis) {}
 
     /**
-     * {@inheritDoc}
+     * Atomic: either this call holds the key afterwards, or it returns null.
      *
      * One atomic `SET key token NX PX ttl`: it sets the key only when it does not exist, with a millisecond expiry.
+     *
+     * @param positive-int $ttlSeconds the key frees itself after this, even if the holder never releases it
+     *
+     * @return LockInterface|null null when another holder has the key
      */
     public function acquire(LockKey $key, int $ttlSeconds): ?LockInterface
     {
@@ -36,7 +40,7 @@ final readonly class RedisMutex implements MutexInterface
     }
 
     /**
-     * {@inheritDoc}
+     * Whether any holder has the key now; used by engines that ask before they lock.
      *
      * Checks that the key exists; the token is not compared.
      */

@@ -1,6 +1,6 @@
 # Symfony demo
 
-A minimal Symfony 8 app that runs `jan/scheduling` on the crunz engine. The library comes in through a Composer `path` repository at `../..`.
+A minimal Symfony 8 app that runs `galvani/php-scheduler-pro` on the crunz engine. The library comes in through a Composer `path` repository at `../..`.
 
 - `config/packages/scheduling.yaml` configures `SchedulingBundle`; the host name comes from `SCHEDULING_HOST`.
 - `config/scheduling.yaml` holds one task, `hello`, which runs `app:hello` every minute (`max_runtime: 30`).

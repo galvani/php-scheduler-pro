@@ -25,7 +25,7 @@ final readonly class MutexStore implements PersistingStoreInterface
     ) {}
 
     /**
-     * {@inheritDoc}
+     * Stores the resource if it is not locked by someone else.
      *
      * @throws LockConflictedException
      */
@@ -42,7 +42,11 @@ final readonly class MutexStore implements PersistingStoreInterface
         $key->setState(self::class, $lock);
     }
 
-    /** {@inheritDoc} */
+    /**
+     * Removes the resource from the storage if the given key owns it.
+     *
+     * Does nothing when the lock is owned by another key.
+     */
     public function delete(Key $key): void
     {
         try {
@@ -53,7 +57,9 @@ final readonly class MutexStore implements PersistingStoreInterface
         $key->removeState(self::class);
     }
 
-    /** {@inheritDoc} */
+    /**
+     * Returns whether the given key owns the lock on the resource.
+     */
     public function exists(Key $key): bool
     {
         $lock = $this->heldBy($key);
@@ -62,7 +68,9 @@ final readonly class MutexStore implements PersistingStoreInterface
     }
 
     /**
-     * {@inheritDoc}
+     * Extends the TTL of a resource.
+     *
+     * @param float $ttl amount of seconds to keep the lock in the store
      *
      * @throws LockConflictedException
      */

@@ -19,7 +19,11 @@ final readonly class Environments implements ConditionInterface
         private string $current,
     ) {}
 
-    /** {@inheritDoc} */
+    /**
+     * Whether the condition holds at the given moment.
+     *
+     * @param DateTimeImmutable $now in the task's time zone
+     */
     public function isSatisfied(DateTimeImmutable $now): bool
     {
         return in_array($this->current, $this->allowed, true);

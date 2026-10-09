@@ -38,7 +38,9 @@ final class SchedulingServiceProvider extends ServiceProvider
     private const string CONFIG_PATH = __DIR__.'/../../../config/scheduling.php';
     private const string MIGRATION = '2026_10_09_000000_create_scheduler_tasks_table.php';
 
-    /** {@inheritDoc} */
+    /**
+     * Registers any application services.
+     */
     public function register(): void
     {
         $this->mergeConfigFrom(self::CONFIG_PATH, 'scheduling');

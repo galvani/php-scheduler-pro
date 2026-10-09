@@ -27,20 +27,29 @@ final class RecordingRunListener implements RunListenerInterface
         private readonly LoggerInterface $logger,
     ) {}
 
-    /** {@inheritDoc} */
+    /**
+     * The run began; the engine holds the task's locks.
+     */
     public function started(TaskId $id, DateTimeImmutable $at): void
     {
         $this->record(new RunRecord($id, RunState::Started, $at, $this->host));
     }
 
-    /** {@inheritDoc} */
+    /**
+     * The run ended successfully.
+     */
     public function finished(TaskId $id, DateTimeImmutable $at): void
     {
         $state = $this->overran($id, $at) ? RunState::Overran : RunState::Finished;
         $this->record(new RunRecord($id, $state, $at, $this->host));
     }
 
-    /** {@inheritDoc} */
+    /**
+     * The run ended with an error.
+     *
+     * @param int|null       $exitCode the command's exit code, when the engine reports it
+     * @param Throwable|null $error    the exception, when the engine reports it
+     */
     public function failed(TaskId $id, DateTimeImmutable $at, ?int $exitCode, ?Throwable $error): void
     {
         $state = $this->overran($id, $at) ? RunState::Overran : RunState::Failed;
@@ -48,7 +57,9 @@ final class RecordingRunListener implements RunListenerInterface
         $this->record(new RunRecord($id, $state, $at, $this->host, $detail));
     }
 
-    /** {@inheritDoc} */
+    /**
+     * The run was due but did not start.
+     */
     public function skipped(TaskId $id, DateTimeImmutable $at, SkipReason $reason): void
     {
         $this->record(new RunRecord($id, RunState::Skipped, $at, $this->host, $reason->value));

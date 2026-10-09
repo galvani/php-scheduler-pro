@@ -29,14 +29,16 @@ final class TestKernel extends Kernel
         parent::__construct('test', true);
     }
 
-    /** {@inheritDoc} */
+    /**
+     * Returns the bundles to register.
+     */
     public function registerBundles(): iterable
     {
         return [new FrameworkBundle(), new SchedulingBundle()];
     }
 
     /**
-     * {@inheritDoc}
+     * Loads the container configuration.
      *
      * @throws Exception
      */
@@ -52,13 +54,19 @@ final class TestKernel extends Kernel
         });
     }
 
-    /** {@inheritDoc} */
+    /**
+     * Gets the cache directory.
+     *
+     * This directory is used for caches that are written at runtime.
+     */
     public function getCacheDir(): string
     {
         return "{$this->directory}/cache";
     }
 
-    /** {@inheritDoc} */
+    /**
+     * Gets the log directory.
+     */
     public function getLogDir(): string
     {
         return "{$this->directory}/log";

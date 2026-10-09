@@ -15,7 +15,9 @@ final class ServiceVisibility implements CompilerPassInterface
     /** @param list<string> $expose ids made public for the test after visibility is recorded */
     public function __construct(private readonly array $expose = []) {}
 
-    /** {@inheritDoc} */
+    /**
+     * Modifies the container before it is dumped to PHP code.
+     */
     public function process(ContainerBuilder $container): void
     {
         foreach ($container->getDefinitions() as $id => $definition) {

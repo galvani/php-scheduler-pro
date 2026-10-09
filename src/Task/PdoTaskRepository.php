@@ -33,7 +33,10 @@ final readonly class PdoTaskRepository implements TaskRepositoryInterface
         }
     }
 
-    /** {@inheritDoc} */
+    /**
+     * Never throws: a source that cannot be read, or a row that is invalid, becomes a TaskProblem
+     * in the set and every valid task is still returned.
+     */
     public function load(): TaskSet
     {
         try {
@@ -64,7 +67,7 @@ final readonly class PdoTaskRepository implements TaskRepositoryInterface
     }
 
     /**
-     * {@inheritDoc}
+     * Inserts the task, or replaces the stored one with the same id.
      *
      * Replaces any row with the same id (delete then insert) inside one transaction.
      */
@@ -79,7 +82,7 @@ final readonly class PdoTaskRepository implements TaskRepositoryInterface
     }
 
     /**
-     * {@inheritDoc}
+     * Marks the task disabled; an unknown id is a no-op.
      *
      * Sets `enabled` to false in the stored JSON without re-validating the rest. An unknown id is ignored.
      */
@@ -101,7 +104,9 @@ final readonly class PdoTaskRepository implements TaskRepositoryInterface
         }
     }
 
-    /** {@inheritDoc} */
+    /**
+     * Deletes the task; an unknown id is a no-op.
+     */
     public function remove(TaskId $id): void
     {
         $this->run("DELETE FROM {$this->table} WHERE id = ?", [$id->value]);

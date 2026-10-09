@@ -34,16 +34,22 @@ final class RedisLock implements LockInterface
         private DateTimeImmutable $expiresAt,
     ) {}
 
-    /** {@inheritDoc} */
+    /**
+     * When the key frees itself unless extended.
+     */
     public function expiresAt(): DateTimeImmutable
     {
         return $this->expiresAt;
     }
 
     /**
-     * {@inheritDoc}
+     * Keeps the lock for a long run. crunz extends it while a task runs; Laravel's lock slot cannot.
      *
      * Resets the expiry to $ttlSeconds from now when the token still matches; false when the key expired or changed hands.
+     *
+     * @param positive-int $ttlSeconds the new lifetime, counted from now
+     *
+     * @return bool false when the lock was already lost (expired or taken by another holder)
      *
      * @throws LockUnavailableException when Redis cannot be reached
      */
@@ -58,7 +64,7 @@ final class RedisLock implements LockInterface
     }
 
     /**
-     * {@inheritDoc}
+     * Releases only if this holder still owns the key; otherwise a no-op.
      *
      * Deletes the key only when the token matches; otherwise does nothing.
      *

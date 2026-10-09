@@ -57,19 +57,21 @@ included. PHPStan enforces it (`exceptions.check` in `phpstan.neon`); a stale `@
   clash (`use Cron\CronExpression as CronExpressionParser;`). Enforced by the fixer
   (`global_namespace_import`, `fully_qualified_strict_types`).
 - Enums for states and reasons.
-- Method names that make comments unnecessary. No comments that describe what the code does; a
-  comment only for a trap the code cannot show.
-- Every method that implements an interface or overrides a parent carries `{@inheritDoc}` (the
-  fixer keeps it: `no_superfluous_phpdoc_tags.remove_inheritdoc` is off).
-- PHPDoc only where the declaration cannot carry the type (array shapes such as
-  `array<string, mixed>`, `list<...>`, `positive-int`).
+- **This code is commented more than production code would be, on purpose.** It is a demo, read and
+  presented line by line, so every class, interface, enum case and public method carries a docblock
+  saying what it is, why it exists and what it does with its inputs. Comments inside method bodies
+  stay rare: only for a trap the code cannot show.
+- A method that implements an interface or overrides a parent repeats the parent's documentation in
+  its own docblock, never `{@inheritDoc}`: a reader sees the promise without opening the parent. The
+  method adds its own implementation facts below it.
+- Array shapes and refined types (`array<string, mixed>`, `list<...>`, `positive-int`) go in PHPDoc.
 - No `__toString()` or `equals()` on value objects unless something calls them; read `->value`.
 
 ## Checks
 
 - `.githooks/pre-commit` runs the fixer in check mode and PHPStan; a commit that fails either is
   refused. `composer install` points git at it (`core.hooksPath`). Never bypass the hook.
-- `composer phpstan`: PHPStan 2.x, level max over `src`. Must be clean (1.x does not understand hooks).
+- `composer phpstan`: PHPStan 2.x, level max over `src` and `tests`. Must be clean (1.x does not understand hooks).
 - `composer cs-fix` fixes, `composer cs-check` only reports; the hook runs the check.
 - `composer phpmd`: vlm's ruleset (`phpmd.xml`), advisory. PHPMD 2.15 cannot parse PHP 8.4
   asymmetric visibility (`private(set)`) and skips those files with "Unexpected token";.

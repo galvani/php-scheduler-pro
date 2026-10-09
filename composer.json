@@ -1,5 +1,6 @@
 {
-    "name": "jan/scheduling",
+    "name": "galvani/php-scheduler-pro",
+    "description": "Swappable PHP scheduler: one task model and our own Redis mutex over Laravel's scheduler or crunz",
     "type": "library",
     "require": {
         "php": ">=8.5",
