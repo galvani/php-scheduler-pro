@@ -2,12 +2,16 @@
 
 namespace Scheduling\Bridge\Laravel;
 
+use DateTimeImmutable;
 use Illuminate\Console\Scheduling\CacheEventMutex;
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\EventMutex;
+use Scheduling\Exception\LockUnavailableException;
 use Scheduling\Lock\LockInterface;
 use Scheduling\Lock\LockKey;
 use Scheduling\Lock\MutexInterface;
+use Scheduling\Run\RunListenerInterface;
+use Scheduling\Run\SkipReason;
 
 final class LaravelEventMutex implements EventMutex
 {
@@ -18,6 +22,7 @@ final class LaravelEventMutex implements EventMutex
         private readonly MutexInterface $mutex,
         private readonly TaskIndex $index,
         private readonly CacheEventMutex $laravelDefault,
+        private readonly RunListenerInterface $listener,
     ) {}
 
     /** {@inheritDoc} */
@@ -27,7 +32,13 @@ final class LaravelEventMutex implements EventMutex
         if (null === $task) {
             return $this->laravelDefault->create($event);
         }
-        $lock = $this->mutex->acquire(LockKey::forTask($task->id), $task->lock->ttlSeconds);
+        try {
+            $lock = $this->mutex->acquire(LockKey::forTask($task->id), $task->lock->ttlSeconds);
+        } catch (LockUnavailableException) {
+            $this->listener->skipped($task->id, new DateTimeImmutable(), SkipReason::LockUnavailable);
+
+            return false;
+        }
         if (null === $lock) {
             return false;
         }
@@ -44,7 +55,11 @@ final class LaravelEventMutex implements EventMutex
             return $this->laravelDefault->exists($event);
         }
 
-        return $this->mutex->isLocked(LockKey::forTask($task->id));
+        try {
+            return $this->mutex->isLocked(LockKey::forTask($task->id));
+        } catch (LockUnavailableException) {
+            return false;
+        }
     }
 
     /** {@inheritDoc} */
@@ -57,6 +72,10 @@ final class LaravelEventMutex implements EventMutex
         }
         $lock = $this->held[$event->mutexName()] ?? null;
         unset($this->held[$event->mutexName()]);
-        $lock?->release();
+        try {
+            $lock?->release();
+        } catch (LockUnavailableException) {
+            // The lock expires on its own TTL.
+        }
     }
 }

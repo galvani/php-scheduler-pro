@@ -7,6 +7,7 @@ use Crunz\Schedule;
 use Crunz\Task\TaskException;
 use DateTimeImmutable;
 use Scheduling\Exception\InvalidTaskException;
+use Scheduling\Exception\LockUnavailableException;
 use Scheduling\Lock\LockKey;
 use Scheduling\Lock\MutexInterface;
 use Scheduling\Run\RunListenerInterface;
@@ -93,7 +94,14 @@ final class CrunzEngine implements SchedulerEngineInterface
     {
         $minute = new DateTimeImmutable('now');
         $minute = $minute->setTime((int) $minute->format('H'), (int) $minute->format('i'));
-        if (null !== $this->mutex->acquire(LockKey::forTaskAt($id, $minute), self::ONE_SERVER_TTL)) {
+        try {
+            $claimed = null !== $this->mutex->acquire(LockKey::forTaskAt($id, $minute), self::ONE_SERVER_TTL);
+        } catch (LockUnavailableException) {
+            $this->listener->skipped($id, new DateTimeImmutable(), SkipReason::LockUnavailable);
+
+            return false;
+        }
+        if ($claimed) {
             return true;
         }
         $this->listener->skipped($id, new DateTimeImmutable(), SkipReason::RanOnAnotherServer);

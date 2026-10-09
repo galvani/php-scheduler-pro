@@ -9,3 +9,4 @@ parameters:
         uncheckedExceptionClasses:
             - LogicException
             - Error
+            - Random\RandomException

@@ -7,6 +7,7 @@ use DateTimeInterface;
 use Illuminate\Console\Scheduling\CacheSchedulingMutex;
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\SchedulingMutex;
+use Scheduling\Exception\LockUnavailableException;
 use Scheduling\Lock\LockKey;
 use Scheduling\Lock\MutexInterface;
 use Scheduling\Run\RunListenerInterface;
@@ -30,7 +31,14 @@ final class LaravelSchedulingMutex implements SchedulingMutex
         if (null === $task) {
             return $this->laravelDefault->create($event, $time);
         }
-        if (null !== $this->mutex->acquire(LockKey::forTaskAt($task->id, $time), self::TTL_SECONDS)) {
+        try {
+            $claimed = null !== $this->mutex->acquire(LockKey::forTaskAt($task->id, $time), self::TTL_SECONDS);
+        } catch (LockUnavailableException) {
+            $this->listener->skipped($task->id, new DateTimeImmutable(), SkipReason::LockUnavailable);
+
+            return false;
+        }
+        if ($claimed) {
             return true;
         }
         // Laravel dispatches no event for this skip; this is the only place it can be recorded.
@@ -47,6 +55,10 @@ final class LaravelSchedulingMutex implements SchedulingMutex
             return $this->laravelDefault->exists($event, $time);
         }
 
-        return $this->mutex->isLocked(LockKey::forTaskAt($task->id, $time));
+        try {
+            return $this->mutex->isLocked(LockKey::forTaskAt($task->id, $time));
+        } catch (LockUnavailableException) {
+            return false;
+        }
     }
 }

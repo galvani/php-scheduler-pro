@@ -3,6 +3,7 @@
 namespace Scheduling\Bridge\Crunz;
 
 use DateTimeImmutable;
+use Scheduling\Exception\LockUnavailableException;
 use Scheduling\Lock\LockInterface;
 use Scheduling\Lock\LockKey;
 use Scheduling\Lock\MutexInterface;
@@ -30,7 +31,11 @@ final readonly class MutexStore implements PersistingStoreInterface
      */
     public function save(Key $key): void
     {
-        $lock = $this->mutex->acquire($this->key, self::INITIAL_TTL);
+        try {
+            $lock = $this->mutex->acquire($this->key, self::INITIAL_TTL);
+        } catch (LockUnavailableException) {
+            $lock = null;
+        }
         if (null === $lock) {
             throw new LockConflictedException();
         }
@@ -40,7 +45,11 @@ final readonly class MutexStore implements PersistingStoreInterface
     /** {@inheritDoc} */
     public function delete(Key $key): void
     {
-        $this->heldBy($key)?->release();
+        try {
+            $this->heldBy($key)?->release();
+        } catch (LockUnavailableException) {
+            // The lock expires on its own TTL.
+        }
         $key->removeState(self::class);
     }
 
@@ -60,7 +69,12 @@ final readonly class MutexStore implements PersistingStoreInterface
     public function putOffExpiration(Key $key, float $ttl): void
     {
         $lock = $this->heldBy($key);
-        if (null === $lock || !$lock->extend(max(1, (int) ceil($ttl)))) {
+        try {
+            $extended = null !== $lock && $lock->extend(max(1, (int) ceil($ttl)));
+        } catch (LockUnavailableException) {
+            $extended = false;
+        }
+        if (!$extended) {
             throw new LockConflictedException();
         }
     }

@@ -3,6 +3,7 @@
 namespace Scheduling\Lock;
 
 use DateTimeImmutable;
+use Scheduling\Exception\LockUnavailableException;
 
 interface LockInterface
 {
@@ -12,9 +13,15 @@ interface LockInterface
      * @param positive-int $ttlSeconds
      *
      * @return bool false when the lock was already lost (expired or taken by another holder)
+     *
+     * @throws LockUnavailableException
      */
     public function extend(int $ttlSeconds): bool;
 
-    /** Releases only if this holder still owns the key; otherwise a no-op. */
+    /**
+     * Releases only if this holder still owns the key; otherwise a no-op.
+     *
+     * @throws LockUnavailableException
+     */
     public function release(): void;
 }
