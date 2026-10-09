@@ -124,6 +124,9 @@ Each of these fits the interfaces without a redesign; each is beyond the assignm
   released from a separate `schedule:finish` process) use our lock, but it brings back Laravel's race: a run
   that outlives its lock lets the next run take it, and the first run's finish then deletes the second
   run's lock. Our lock is released only by its owner; background tasks stay on Laravel's lock.
+- **A full Symfony bundle.** `SchedulingBundle` wires the package into a Symfony app and no more. The bundle we
+  would ship as a product (a Flex recipe, a configuration reference, autoconfiguration, console commands, tests
+  across Symfony versions) is beyond the scope of the assignment, which names Laravel and crunz.
 - **A Symfony Flex recipe.** It would register the bundle and copy its config on `composer require`, but
   Flex finds recipes only in the public `recipes-contrib` (a public package) or at an endpoint every app
   must name. For a private package that costs more than the two files it saves.

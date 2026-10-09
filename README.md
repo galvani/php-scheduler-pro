@@ -39,6 +39,12 @@ The service provider is discovered automatically. Keep Laravel's usual crontab l
 
 ### Symfony (on crunz)
 
+> **A note on the Symfony integration:** `SchedulingBundle` is the smallest wiring that runs the package in a
+> Symfony app, enough to show the engine swap working. It is not the Symfony bundle we would ship as a product:
+> that would come with a Flex recipe that registers and configures it on `composer require`, a documented
+> configuration reference, autoconfiguration of the application's own services, its own console commands, and
+> tests across Symfony versions. Building it out goes beyond the scope of this assignment.
+
 ```bash
 composer require galvani/php-scheduler-pro crunzphp/crunz symfony/lock
 ```
@@ -238,7 +244,8 @@ in Docker when it is available.
 - Laravel's failure hook gives no exit code or exception, so a failed run on Laravel has no reason recorded.
 - The application's own Laravel tasks get the lock but no run record, until they are exported into the package.
 - Only `between` and `environments` can be written as data; a custom condition is code.
-- No Symfony Flex recipe: the bundle and its config are added by hand.
+- The Symfony bundle is minimal wiring, not a full product bundle (see the note under Installation); there is
+  no Flex recipe, so the bundle and its config are added by hand.
 
 Why each of these is so, and what is designed but not built: [docs/design.md](docs/design.md).
 
