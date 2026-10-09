@@ -33,6 +33,34 @@ src/
 
 Checks: `composer phpstan`, `composer cs-fix`, `composer phpmd`.
 
+## The next engine: Symfony Scheduler
+
+The package ships bridges for the two engines the assignment names, Laravel's scheduler and crunz.
+We consider Symfony's Scheduler component (`symfony/scheduler` with `symfony/messenger`) the best
+engine of the three, and adding it is a small, contained piece of work.
+
+**Why it is the best option:**
+
+- It remembers its last run (a stateful schedule), so runs missed while the servers were down are
+  caught up. Laravel's scheduler and crunz forget them.
+- It runs a task as a Messenger message: in the same process, or sent to a queue and handled by any
+  worker on any machine.
+- It locks the schedule across workers with Symfony Lock, the same mechanism this package already
+  plugs its mutex into.
+- It is maintained by the Symfony core team.
+
+**Why it costs little, in Laravel too:**
+
+- The core depends on no framework, so a new engine is one more bridge: a `SchedulerEngineInterface`
+  implementation that turns each `TaskDefinition` into a `RecurringMessage` with a cron trigger.
+- The crunz bridge already adapts our mutex to Symfony Lock (`Bridge/Crunz/MutexStore`); the same
+  store serves Symfony Scheduler's lock.
+- Its run events (before run, after run, on failure) map onto `RunListenerInterface` the way
+  Laravel's and crunz's hooks do.
+- Scheduler and Messenger are standalone components. In a Laravel app they need a service provider
+  that builds the message bus and an artisan command that starts the worker; nothing in the core
+  changes.
+
 ## Known limitations
 
 These are understood and deliberately left out; each goes beyond the scope of the assignment.
