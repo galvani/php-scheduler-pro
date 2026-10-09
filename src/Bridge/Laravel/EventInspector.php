@@ -40,7 +40,8 @@ final readonly class EventInspector
         if ($this->event->evenInMaintenanceMode) {
             $notes[] = 'review: the app runs this in maintenance mode; the exported task does not';
         }
-        if ($this->event->evenWhenPaused) {
+        // evenWhenPaused exists from Laravel 13 on; read by name so the same code analyses on 12 and 13.
+        if (true === (get_object_vars($this->event)['evenWhenPaused'] ?? false)) {
             $notes[] = 'review: the app runs this while the schedule is paused; the exported task does not';
         }
         if ($this->event->runInBackground) {
