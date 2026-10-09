@@ -69,12 +69,19 @@ included. PHPStan enforces it (`exceptions.check` in `phpstan.neon`); a stale `@
 
 ## Checks
 
-- `.githooks/pre-commit` runs the fixer in check mode and PHPStan; a commit that fails either is
-  refused. `composer install` points git at it (`core.hooksPath`). Never bypass the hook.
-- `composer phpstan`: PHPStan 2.x, level max over `src` and `tests`. Must be clean (1.x does not understand hooks).
-- `composer cs-fix` fixes, `composer cs-check` only reports; the hook runs the check.
-- `composer phpmd`: vlm's ruleset (`phpmd.xml`), advisory. PHPMD 2.15 cannot parse PHP 8.4
-  asymmetric visibility (`private(set)`) and skips those files with "Unexpected token";.
+- With Docker: `docker compose run --rm tests` (composer install, then the suite against a bundled Redis);
+  `docker compose run --rm tests composer phpstan` for any composer script; `install-laravel`,
+  `install-laravel-12`, `install-symfony` for the `composer require` install tests; `demo-laravel`, `demo` for
+  the demos. Every command and what it proves: `docs/testing.md`.
+- `.githooks/pre-commit`: with Docker running, cs-check, PHPStan and the suite in the container; without Docker,
+  cs-check and PHPStan on the host. A commit that fails is refused. `composer install` points git at it
+  (`core.hooksPath`). Never bypass the hook.
+- `composer phpstan`: PHPStan 2.x, level max over `src` and `tests`, with checked exceptions. Must be clean.
+- `composer cs-fix` fixes, `composer cs-check` only reports. `demo/laravel` is a stock Laravel skeleton and is
+  outside the fixer.
+- `composer test` on the host needs Redis at `REDIS_HOST:REDIS_PORT` (default `127.0.0.1:16379`). A Redis test
+  fails, never skips, when Redis is missing.
+- `composer phpmd`: advisory. PHPMD 2.15 cannot parse `private(set)` and skips those files.
 
 ## Logging levels
 
