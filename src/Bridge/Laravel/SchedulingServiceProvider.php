@@ -16,9 +16,11 @@ use Illuminate\Foundation\Application;
 use Illuminate\Redis\RedisManager;
 use Illuminate\Support\ServiceProvider;
 use InvalidArgumentException;
+use LogicException;
 use PDOException;
 use Psr\Log\LoggerInterface;
 use Redis;
+use RedisException;
 use Scheduling\Lock\MutexInterface;
 use Scheduling\Lock\RedisMutex;
 use Scheduling\Run\RecordingRunListener;
@@ -36,6 +38,7 @@ use Scheduling\Task\YamlTaskSource;
 final class SchedulingServiceProvider extends ServiceProvider
 {
     private const string CONFIG_PATH = __DIR__.'/../../../config/scheduling.php';
+    private const string REDIS = 'scheduling.redis';
     private const string MIGRATION = '2026_10_09_000000_create_scheduler_tasks_table.php';
 
     /**
@@ -45,8 +48,9 @@ final class SchedulingServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom(self::CONFIG_PATH, 'scheduling');
 
-        $this->app->singleton(MutexInterface::class, static fn (Application $app): MutexInterface => new RedisMutex(self::redis($app)));
-        $this->app->singleton(RunRepositoryInterface::class, static fn (Application $app): RunRepositoryInterface => new RedisRunRepository(self::redis($app)));
+        $this->app->singleton(self::REDIS, static fn (Application $app): Redis => self::redis($app));
+        $this->app->singleton(MutexInterface::class, static fn (Application $app): MutexInterface => new RedisMutex(self::client($app)));
+        $this->app->singleton(RunRepositoryInterface::class, static fn (Application $app): RunRepositoryInterface => new RedisRunRepository(self::client($app)));
         $this->app->singleton(TaskDefinitionMapper::class, static fn (Application $app): TaskDefinitionMapper => new TaskDefinitionMapper(
             new DateTimeZone($app->make(Config::class)->string('app.timezone')),
             (string) $app->environment(),
@@ -114,17 +118,43 @@ final class SchedulingServiceProvider extends ServiceProvider
     }
 
     /**
-     * The scheduler's own phpredis client, taken from the Laravel Redis connection named in the config.
-     * It is not bound as `Redis` in the container, so the application's own Redis use is untouched.
+     * The scheduler's own phpredis connection, opened from the Laravel Redis connection named in the config
+     * (host, port, credentials, database, TLS) but without the application's key prefix: every engine and every
+     * server must use the same lock keys, and Laravel would otherwise put `<app>-database-` in front of them.
+     * It is a connection of its own, not bound as `Redis`, so the application's own Redis client is untouched.
+     * When Redis is down at connect time it is logged and an unconnected client is returned, so every lock call
+     * fails as LockUnavailableException and the run is skipped, as on any other Redis failure.
      *
      * @throws BindingResolutionException
      */
     private static function redis(Application $app): Redis
     {
         $name = $app->make(Config::class)->string('scheduling.redis');
-        $client = $app->make(RedisManager::class)->connection($name)->client();
+        try {
+            $client = $app->make(RedisManager::class)->resolve($name)->client();
+            if (!$client instanceof Redis) {
+                throw new InvalidArgumentException("Redis connection \"{$name}\" must use the phpredis client, got ".get_debug_type($client));
+            }
+            $client->setOption(Redis::OPT_PREFIX, '');
+
+            return $client;
+        } catch (RedisException $e) {
+            $app->make(LoggerInterface::class)->warning('Scheduler Redis unreachable; runs that need a lock are skipped', ['connection' => $name, 'exception' => $e]);
+
+            return new Redis();
+        }
+    }
+
+    /**
+     * The one scheduler connection, shared by the mutex and the run record.
+     *
+     * @throws BindingResolutionException
+     */
+    private static function client(Application $app): Redis
+    {
+        $client = $app->make(self::REDIS);
         if (!$client instanceof Redis) {
-            throw new InvalidArgumentException("Redis connection \"{$name}\" must use the phpredis client, got ".get_debug_type($client));
+            throw new LogicException('The scheduling.redis service must be a phpredis client');
         }
 
         return $client;

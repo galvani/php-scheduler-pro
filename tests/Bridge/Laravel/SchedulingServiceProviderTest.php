@@ -12,14 +12,21 @@ use Illuminate\Redis\RedisManager;
 use Illuminate\Support\ServiceProvider;
 use InvalidArgumentException;
 use JsonException;
+use Psr\Log\LoggerInterface;
 use Redis;
+use RedisException;
 use Scheduling\Bridge\Laravel\LaravelEventMutex;
 use Scheduling\Bridge\Laravel\LaravelSchedulingMutex;
 use Scheduling\Bridge\Laravel\SchedulingServiceProvider;
+use Scheduling\Exception\InvalidTaskException;
+use Scheduling\Exception\LockUnavailableException;
+use Scheduling\Lock\LockKey;
 use Scheduling\Lock\MutexInterface;
 use Scheduling\Lock\RedisMutex;
 use Scheduling\Run\RedisRunRepository;
 use Scheduling\Run\RunRepositoryInterface;
+use Scheduling\Task\TaskId;
+use Scheduling\Tests\Run\CollectingLogger;
 use stdClass;
 
 final class SchedulingServiceProviderTest extends LaravelTestCase
@@ -73,11 +80,47 @@ final class SchedulingServiceProviderTest extends LaravelTestCase
         self::assertFalse($this->laravel()->bound(Redis::class));
     }
 
+    /**
+     * @throws BindingResolutionException
+     * @throws InvalidTaskException
+     * @throws LockUnavailableException
+     * @throws RedisException
+     */
+    public function testLocksIgnoreTheApplicationsRedisKeyPrefix(): void
+    {
+        config(['database.redis.options.prefix' => 'app-database-']);
+        $id = new TaskId($this->newTaskId());
+
+        $lock = $this->laravel()->make(MutexInterface::class)->acquire(LockKey::forTask($id), 60);
+
+        self::assertNotNull($lock);
+        self::assertSame(1, $this->redis->exists("scheduler:task:{$id->value}"));
+        self::assertSame(0, $this->redis->exists("app-database-scheduler:task:{$id->value}"));
+        $lock->release();
+    }
+
+    /**
+     * @throws BindingResolutionException
+     * @throws InvalidTaskException
+     * @throws LockUnavailableException
+     */
+    public function testUnreachableRedisIsLoggedAndLockingThenFailsAsUnavailable(): void
+    {
+        config(['database.redis.default.port' => 1]);
+        $logger = new CollectingLogger();
+        $this->laravel()->instance(LoggerInterface::class, $logger);
+        $mutex = $this->laravel()->make(MutexInterface::class);
+
+        self::assertSame('Scheduler Redis unreachable; runs that need a lock are skipped', $logger->records[0]['message']);
+        $this->expectException(LockUnavailableException::class);
+        $mutex->acquire(LockKey::forTask(new TaskId($this->newTaskId())), 60);
+    }
+
     /** @throws BindingResolutionException */
     public function testClientThatIsNotPhpRedisFailsClearly(): void
     {
         $this->laravel()->singleton('redis', static fn (Application $app): RedisManager => new class($app, 'predis', []) extends RedisManager {
-            public function connection($name = null): Connection
+            public function resolve($name = null): Connection
             {
                 return new class extends Connection {
                     /** @param array<string> $channels */

@@ -12,6 +12,10 @@ services:
   tests:
     build: .
     image: php-scheduler-pro
+    command: ["sh", "-c", "composer install --no-interaction --no-scripts && composer test"]
+    volumes:
+      - .:/app
+      - vendor:/app/vendor
     environment:
       REDIS_HOST: redis
       REDIS_PORT: "6379"
@@ -21,10 +25,55 @@ services:
 
   demo:
     image: php-scheduler-pro
-    command: ["demo/symfony/prove.sh"]
+    command: ["sh", "-c", "composer install --working-dir=demo/symfony --no-interaction --no-scripts && demo/symfony/prove.sh"]
+    volumes:
+      - .:/app
+      - demo-vendor:/app/demo/symfony/vendor
+      - demo-var:/app/demo/symfony/var
     environment:
       REDIS_HOST: redis
       REDIS_PORT: "6379"
     depends_on:
       redis:
         condition: service_healthy
+
+  install-laravel:
+    image: php-scheduler-pro
+    command: ["docker/install-test.sh", "laravel"]
+    volumes:
+      - .:/app:ro
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  install-laravel-12:
+    image: php-scheduler-pro
+    command: ["docker/install-test.sh", "laravel", "^12.0"]
+    volumes:
+      - .:/app:ro
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  install-symfony:
+    image: php-scheduler-pro
+    command: ["docker/install-test.sh", "symfony"]
+    volumes:
+      - .:/app:ro
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  vendor:
+  demo-vendor:
+  demo-var:
