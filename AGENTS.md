@@ -8,7 +8,7 @@ Design and every decision behind it: the Forgejo wiki pages "Emorfiq scheduler d
 
 - Wait for plan approval: after proposing a plan, implement nothing until Jan approves it.
 - Never commit or push unless Jan explicitly asks. Never force push.
-- Never co-author commits or mention the use of AI in the repository.
+- Commits end with `Co-Authored-By: Claude <noreply@anthropic.com>`, without the model name.
 - Never rewrite, weaken or delete a test to make code pass. Fix the code; the test is the contract.
 - Never change a public method signature (parameter types, return type, order, name) without approval.
 - When in doubt, ask.
