@@ -1,0 +1,5 @@
+tasks:
+    hello:
+        schedule: '* * * * *'
+        command: app:hello
+        max_runtime: 30

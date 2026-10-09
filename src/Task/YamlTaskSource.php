@@ -6,8 +6,15 @@ use Scheduling\Exception\InvalidTaskException;
 use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
 
+/**
+ * Read-only task source backed by a YAML file with a top-level `tasks` map keyed by task id.
+ * An unparsable file, a missing `tasks` map or a bad entry is reported as a TaskProblem; valid entries still load.
+ */
 final readonly class YamlTaskSource implements TaskSourceInterface
 {
+    /**
+     * @param string $path absolute or relative path of the YAML file
+     */
     public function __construct(
         private string $path,
         private TaskDefinitionMapper $mapper,

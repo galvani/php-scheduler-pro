@@ -10,8 +10,19 @@ use PDOStatement;
 use Scheduling\Exception\InvalidTaskException;
 use Scheduling\Exception\StorageException;
 
+/**
+ * Writable task source on a PDO table. Each row holds the task id and its definition as JSON, in the same
+ * shape as a YAML entry, converted by TaskDefinitionMapper.
+ * Reads never throw: a failed query, a malformed row or invalid JSON becomes a TaskProblem. Writes throw StorageException.
+ */
 final readonly class PdoTaskRepository implements TaskRepositoryInterface
 {
+    /**
+     * @param string $table table with an `id` and a `definition` column; only letters, digits and underscores,
+     *                      because it is placed into the SQL text
+     *
+     * @throws InvalidArgumentException when the table name has other characters
+     */
     public function __construct(
         private PDO $pdo,
         private TaskDefinitionMapper $mapper,
@@ -52,7 +63,11 @@ final readonly class PdoTaskRepository implements TaskRepositoryInterface
         return new TaskSet($tasks, $problems);
     }
 
-    /** {@inheritDoc} */
+    /**
+     * {@inheritDoc}
+     *
+     * Replaces any row with the same id (delete then insert) inside one transaction.
+     */
     public function save(TaskDefinition $task): void
     {
         try {
@@ -63,7 +78,11 @@ final readonly class PdoTaskRepository implements TaskRepositoryInterface
         $this->replace($task->id->value, $definition);
     }
 
-    /** {@inheritDoc} */
+    /**
+     * {@inheritDoc}
+     *
+     * Sets `enabled` to false in the stored JSON without re-validating the rest. An unknown id is ignored.
+     */
     public function disable(TaskId $id): void
     {
         try {
@@ -88,7 +107,11 @@ final readonly class PdoTaskRepository implements TaskRepositoryInterface
         $this->run("DELETE FROM {$this->table} WHERE id = ?", [$id->value]);
     }
 
-    /** @throws StorageException */
+    /**
+     * Delete and insert as one unit; joins the caller's transaction when one is open, otherwise opens and commits its own.
+     *
+     * @throws StorageException
+     */
     private function replace(string $id, string $definition): void
     {
         $own = !$this->pdo->inTransaction();
@@ -110,6 +133,7 @@ final readonly class PdoTaskRepository implements TaskRepositoryInterface
         }
     }
 
+    /** Rolls back only a transaction this repository opened, and ignores a failing rollback. */
     private function rollBack(bool $own): void
     {
         if ($own && $this->pdo->inTransaction()) {

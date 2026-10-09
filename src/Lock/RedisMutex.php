@@ -7,11 +7,20 @@ use Redis;
 use RedisException;
 use Scheduling\Exception\LockUnavailableException;
 
+/**
+ * MutexInterface on Redis. Each acquisition gets a random token; the lock holds it so only the holder can release
+ * or extend the key. When Redis is unreachable it throws LockUnavailableException instead of reporting "free".
+ */
 final readonly class RedisMutex implements MutexInterface
 {
+    /** @param Redis $redis a connected phpredis client */
     public function __construct(private Redis $redis) {}
 
-    /** {@inheritDoc} */
+    /**
+     * {@inheritDoc}
+     *
+     * One atomic `SET key token NX PX ttl`: it sets the key only when it does not exist, with a millisecond expiry.
+     */
     public function acquire(LockKey $key, int $ttlSeconds): ?LockInterface
     {
         $token = bin2hex(random_bytes(16));
@@ -26,7 +35,11 @@ final readonly class RedisMutex implements MutexInterface
             : null;
     }
 
-    /** {@inheritDoc} */
+    /**
+     * {@inheritDoc}
+     *
+     * Checks that the key exists; the token is not compared.
+     */
     public function isLocked(LockKey $key): bool
     {
         try {

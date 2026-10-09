@@ -1,0 +1,10 @@
+parameters:
+    default_host: demo
+    default_redis_port: 6379
+
+scheduling:
+    tasks_file: '%kernel.project_dir%/config/scheduling.yaml'
+    console_binary: 'php %kernel.project_dir%/bin/console'
+    host: '%env(default:default_host:SCHEDULING_HOST)%'
+    redis:
+        port: '%env(int:default:default_redis_port:REDIS_PORT)%'

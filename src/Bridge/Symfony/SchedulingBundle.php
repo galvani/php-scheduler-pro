@@ -1,0 +1,152 @@
+<?php declare(strict_types=1);
+
+namespace Scheduling\Bridge\Symfony;
+
+use Crunz\Schedule;
+use DateTimeZone;
+use PDO;
+use Psr\Log\NullLogger;
+use Redis;
+use RuntimeException;
+use Scheduling\Bridge\Crunz\CrunzEngine;
+use Scheduling\Lock\MutexInterface;
+use Scheduling\Lock\RedisMutex;
+use Scheduling\Run\RecordingRunListener;
+use Scheduling\Run\RedisRunRepository;
+use Scheduling\Run\RunListenerInterface;
+use Scheduling\Run\RunRepositoryInterface;
+use Scheduling\Scheduler;
+use Scheduling\SchedulerInterface;
+use Scheduling\Task\CompositeTaskSource;
+use Scheduling\Task\PdoTaskRepository;
+use Scheduling\Task\TaskDefinitionMapper;
+use Scheduling\Task\TaskRepositoryInterface;
+use Scheduling\Task\TaskSourceInterface;
+use Scheduling\Task\YamlTaskSource;
+use Symfony\Component\Config\Definition\Configurator\DefinitionConfigurator;
+use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
+use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
+use Symfony\Component\HttpKernel\Bundle\AbstractBundle;
+
+use function Symfony\Component\DependencyInjection\Loader\Configurator\inline_service;
+use function Symfony\Component\DependencyInjection\Loader\Configurator\service;
+
+final class SchedulingBundle extends AbstractBundle implements CompilerPassInterface
+{
+    private const string LOGGER = 'scheduling.logger';
+    private const string REDIS = 'scheduling.redis';
+    private const string PDO = 'scheduling.pdo';
+
+    /**
+     * {@inheritDoc}
+     *
+     * @throws RuntimeException
+     */
+    public function configure(DefinitionConfigurator $definition): void
+    {
+        $definition->rootNode()
+            ->children()
+                ->scalarNode('tasks_file')->isRequired()->cannotBeEmpty()->end()
+                ->scalarNode('console_binary')->isRequired()->cannotBeEmpty()->end()
+                ->scalarNode('host')->defaultNull()->end()
+                ->arrayNode('redis')
+                    ->addDefaultsIfNotSet()
+                    ->children()
+                        ->scalarNode('host')->defaultValue('127.0.0.1')->end()
+                        ->integerNode('port')->defaultValue(6379)->end()
+                    ->end()
+                ->end()
+                ->arrayNode('database')
+                    ->addDefaultsIfNotSet()
+                    ->validate()
+                        ->ifTrue(static fn (array $database): bool => true === $database['enabled'] && null === $database['dsn'])
+                        ->thenInvalid('scheduling.database.dsn is required when the database is enabled')
+                    ->end()
+                    ->children()
+                        ->booleanNode('enabled')->defaultFalse()->end()
+                        ->scalarNode('dsn')->defaultNull()->end()
+                        ->scalarNode('user')->defaultNull()->end()
+                        ->scalarNode('password')->defaultNull()->end()
+                        ->scalarNode('table')->defaultValue('scheduler_tasks')->end()
+                    ->end()
+                ->end()
+            ->end();
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param array{
+     *     tasks_file: string,
+     *     console_binary: string,
+     *     host: string|null,
+     *     redis: array{host: string, port: int},
+     *     database: array{enabled: bool, dsn: string|null, user: string|null, password: string|null, table: string},
+     * } $config
+     */
+    public function loadExtension(array $config, ContainerConfigurator $container, ContainerBuilder $builder): void
+    {
+        $services = $container->services();
+        $redis = $config['redis'];
+        $database = $config['database'];
+
+        $services->set(self::REDIS, Redis::class)->call('connect', [$redis['host'], $redis['port']]);
+        $services->set(MutexInterface::class, RedisMutex::class)->args([service(self::REDIS)]);
+        $services->set(RunRepositoryInterface::class, RedisRunRepository::class)->args([service(self::REDIS)]);
+        $services->set(TaskDefinitionMapper::class)->args([
+            inline_service(DateTimeZone::class)->args([date_default_timezone_get()]),
+            '%kernel.environment%',
+        ]);
+        $services->set(YamlTaskSource::class)->args([$config['tasks_file'], service(TaskDefinitionMapper::class)]);
+
+        if ($database['enabled']) {
+            $services->set(self::PDO, PDO::class)->args([$database['dsn'], $database['user'], $database['password']]);
+            $services->set(TaskRepositoryInterface::class, PdoTaskRepository::class)
+                ->args([service(self::PDO), service(TaskDefinitionMapper::class), $database['table']]);
+            $services->set(TaskSourceInterface::class, CompositeTaskSource::class)
+                ->args([[service(YamlTaskSource::class), service(TaskRepositoryInterface::class)]]);
+            $runtime = service(TaskRepositoryInterface::class);
+        } else {
+            $services->alias(TaskSourceInterface::class, YamlTaskSource::class);
+            $runtime = null;
+        }
+
+        $services->set(SchedulerInterface::class, Scheduler::class)
+            ->args([service(TaskSourceInterface::class), $runtime]);
+        $services->set(RunListenerInterface::class, RecordingRunListener::class)
+            ->factory([RunListenerFactory::class, 'create'])
+            ->args([
+                service(SchedulerInterface::class),
+                service(RunRepositoryInterface::class),
+                $config['host'] ?? gethostname() ?: 'unknown',
+                service(self::LOGGER),
+            ]);
+        $services->set(Schedule::class);
+        $services->set(CrunzEngine::class)->args([
+            service(Schedule::class),
+            service(MutexInterface::class),
+            service(RunListenerInterface::class),
+            $config['console_binary'],
+        ]);
+        $services->set(CrunzTasks::class)
+            ->public()
+            ->args([service(SchedulerInterface::class), service(CrunzEngine::class), service(self::LOGGER)]);
+    }
+
+    /** {@inheritDoc} */
+    public function build(ContainerBuilder $container): void
+    {
+        $container->addCompilerPass($this);
+    }
+
+    /** {@inheritDoc} */
+    public function process(ContainerBuilder $container): void
+    {
+        if ($container->has('logger')) {
+            $container->setAlias(self::LOGGER, 'logger');
+        } else {
+            $container->register(self::LOGGER, NullLogger::class);
+        }
+    }
+}

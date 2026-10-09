@@ -8,6 +8,11 @@ use Scheduling\Exception\InvalidTaskException;
 use Scheduling\Task\Condition\Environments;
 use Scheduling\Task\Condition\TimeWindow;
 
+/**
+ * Converts between a task definition and its data form, the array shape shared by a YAML entry and a database row.
+ * Keys: schedule, command, arguments, options, timezone, max_runtime, lock_margin, enabled, between,
+ * environments, adapters. An unknown key is an error. `schedule`, `command` and `max_runtime` are required.
+ */
 final readonly class TaskDefinitionMapper
 {
     private const array KEYS = [
@@ -17,15 +22,23 @@ final readonly class TaskDefinitionMapper
 
     private const float DEFAULT_MARGIN = 1.5;
 
+    /**
+     * @param DateTimeZone $defaultTimezone used when a row has no `timezone`, and omitted from stored rows when equal
+     * @param string       $environment     the current environment name, checked by the `environments` condition
+     */
     public function __construct(
         private DateTimeZone $defaultTimezone,
         private string $environment,
     ) {}
 
     /**
+     * Builds a validated task from a data row. `between` becomes a TimeWindow of two "HH:MM" times,
+     * `environments` an Environments condition; defaults: lock_margin 1.5, enabled true.
+     *
+     * @param string                  $id  the task id, taken from the YAML key or the table column, not from the row
      * @param array<array-key, mixed> $row
      *
-     * @throws InvalidTaskException
+     * @throws InvalidTaskException when the row has an unknown key, a missing required key or a value of the wrong type or range
      */
     public function fromArray(string $id, array $row): TaskDefinition
     {
@@ -67,6 +80,9 @@ final readonly class TaskDefinitionMapper
     }
 
     /**
+     * Builds the data row of a task, leaving out values equal to the defaults (timezone, margin, enabled).
+     * Only TimeWindow and Environments conditions can be stored, one of each.
+     *
      * @return array<string, mixed>
      *
      * @throws InvalidTaskException when a condition cannot be stored as data

@@ -2,6 +2,7 @@
 
 namespace Scheduling\Capability;
 
+/** One engine's answer, per Capability, to "who does this here: the engine, the package, or nobody?". */
 final readonly class CapabilityReport
 {
     /** @param array<value-of<Capability>, Fulfilment> $fulfilments a capability left out is unavailable */

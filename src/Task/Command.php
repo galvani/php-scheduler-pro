@@ -4,6 +4,10 @@ namespace Scheduling\Task;
 
 use Scheduling\Exception\InvalidTaskException;
 
+/**
+ * What a task runs: a console command name with its arguments and options, never a shell string.
+ * Arguments and options are held as given; the name must not be empty.
+ */
 final class Command
 {
     public private(set) string $name {
@@ -12,6 +16,7 @@ final class Command
     }
 
     /**
+     * @param string                                            $name      the command name; empty is refused
      * @param list<string>                                      $arguments positional, in order
      * @param array<non-empty-string, string|list<string>|true> $options   without dashes; true = flag
      *

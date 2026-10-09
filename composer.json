@@ -50,5 +50,12 @@
         "psr-4": {
             "Scheduling\\Tests\\": "tests/"
         }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Scheduling\\Bridge\\Laravel\\SchedulingServiceProvider"
+            ]
+        }
     }
 }

@@ -9,9 +9,17 @@ use Scheduling\Task\TaskDefinition;
 use Scheduling\Task\TaskId;
 use Throwable;
 
+/**
+ * Turns the engine's event stream into run records. A run that finishes or fails after more than the task's max
+ * runtime since its recorded start is stored as `overran`, not `finished` or `failed`.
+ * A storage failure is logged as a warning and never stops a task.
+ */
 final class RecordingRunListener implements RunListenerInterface
 {
-    /** @param array<string, TaskDefinition> $tasks */
+    /**
+     * @param array<string, TaskDefinition> $tasks the registered tasks keyed by id; their max runtime decides `overran`
+     * @param string                        $host  recorded on every run record to tell servers apart
+     */
     public function __construct(
         private readonly RunRepositoryInterface $runs,
         private readonly array $tasks,
@@ -46,6 +54,7 @@ final class RecordingRunListener implements RunListenerInterface
         $this->record(new RunRecord($id, RunState::Skipped, $at, $this->host, $reason->value));
     }
 
+    /** Appends the record; a StorageException is logged, not rethrown. */
     private function record(RunRecord $record): void
     {
         try {
@@ -55,6 +64,10 @@ final class RecordingRunListener implements RunListenerInterface
         }
     }
 
+    /**
+     * Whether the run lasted longer than the task's max runtime, measured from the last recorded start.
+     * False when there is no start record, the task is unknown or the history cannot be read.
+     */
     private function overran(TaskId $id, DateTimeImmutable $end): bool
     {
         try {

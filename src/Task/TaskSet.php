@@ -2,6 +2,9 @@
 
 namespace Scheduling\Task;
 
+/**
+ * The result of reading tasks: the valid ones keyed by id, and the problems found on the way.
+ */
 final readonly class TaskSet
 {
     /**

@@ -2,9 +2,13 @@
 
 namespace Scheduling\Task;
 
+/**
+ * Merges several task sources into one list. An id defined in more than one source is ambiguous, so every
+ * copy is skipped and a problem reported; the other tasks are unaffected. Problems from the sources pass through.
+ */
 final readonly class CompositeTaskSource implements TaskSourceInterface
 {
-    /** @param list<TaskSourceInterface> $sources */
+    /** @param list<TaskSourceInterface> $sources order does not matter: duplicates are skipped, not overridden */
     public function __construct(private array $sources) {}
 
     /** {@inheritDoc} */

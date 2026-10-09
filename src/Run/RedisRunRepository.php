@@ -10,17 +10,28 @@ use Scheduling\Exception\InvalidTaskException;
 use Scheduling\Exception\StorageException;
 use Scheduling\Task\TaskId;
 
+/**
+ * RunRepositoryInterface on Redis. Per task it keeps `scheduler:runs:<id>`, a list of JSON records capped to the
+ * newest N, and the hash `scheduler:runs:<id>:last` holding the latest record per state, which is not capped.
+ */
 final readonly class RedisRunRepository implements RunRepositoryInterface
 {
     private const string TIME_FORMAT = 'Y-m-d\TH:i:s.uP';
 
-    /** @param positive-int $historyLength records kept per task */
+    /**
+     * @param Redis        $redis         a connected phpredis client
+     * @param positive-int $historyLength records kept per task
+     */
     public function __construct(
         private Redis $redis,
         private int $historyLength = 1000,
     ) {}
 
-    /** {@inheritDoc} */
+    /**
+     * {@inheritDoc}
+     *
+     * Pushes the record on the history list, trims it to the cap and updates the per-state hash in one MULTI transaction.
+     */
     public function append(RunRecord $record): void
     {
         try {
@@ -43,7 +54,11 @@ final readonly class RedisRunRepository implements RunRepositoryInterface
         }
     }
 
-    /** {@inheritDoc} */
+    /**
+     * {@inheritDoc}
+     *
+     * Reads from the per-state hash, so it does not scan the history list.
+     */
     public function lastOf(TaskId $id, RunState $state): ?RunRecord
     {
         try {

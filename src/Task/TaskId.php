@@ -4,6 +4,10 @@ namespace Scheduling\Task;
 
 use Scheduling\Exception\InvalidTaskException;
 
+/**
+ * The identity of a task and the key every lock and run record is built from.
+ * Lower-case letters, digits, dots, underscores and hyphens; starts with a letter or digit; 100 characters at most.
+ */
 final class TaskId
 {
     public private(set) string $value {
@@ -13,7 +17,11 @@ final class TaskId
             : throw new InvalidTaskException("Invalid task id: {$value}");
     }
 
-    /** @throws InvalidTaskException */
+    /**
+     * @param string $value the id as written in YAML or stored in the database
+     *
+     * @throws InvalidTaskException when it does not match the allowed pattern
+     */
     public function __construct(string $value)
     {
         $this->value = $value;

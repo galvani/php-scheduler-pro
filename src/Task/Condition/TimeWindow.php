@@ -5,6 +5,10 @@ namespace Scheduling\Task\Condition;
 use DateTimeImmutable;
 use Scheduling\Exception\InvalidTaskException;
 
+/**
+ * Condition: the task runs only when the local time of day falls inside a window, ends included.
+ * The time is read in the task's timezone. A window whose end is earlier than its start crosses midnight.
+ */
 final class TimeWindow implements ConditionInterface
 {
     private const string FORMAT = '/^([01]\d|2[0-3]):[0-5]\d$/D';
@@ -31,7 +35,11 @@ final class TimeWindow implements ConditionInterface
         $this->to = $to;
     }
 
-    /** {@inheritDoc} */
+    /**
+     * {@inheritDoc}
+     *
+     * Compares "H:i" strings, which sort correctly because the format is fixed-width.
+     */
     public function isSatisfied(DateTimeImmutable $now): bool
     {
         $time = $now->format('H:i');
