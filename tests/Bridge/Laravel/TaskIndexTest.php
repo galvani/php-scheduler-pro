@@ -32,4 +32,15 @@ final class TaskIndexTest extends TestCase
 
         self::assertSame($second, $index->get('name'));
     }
+
+    public function testTasksAreTheAddedTasksKeyedById(): void
+    {
+        $report = Tasks::make('report');
+        $cleanup = Tasks::make('cleanup');
+        $index = new TaskIndex();
+        $index->add('scheduler:task:report', $report);
+        $index->add('scheduler:task:cleanup', $cleanup);
+
+        self::assertSame(['report' => $report, 'cleanup' => $cleanup], $index->tasks());
+    }
 }

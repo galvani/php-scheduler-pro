@@ -36,12 +36,13 @@ final class LaravelEventMutexUnitTest extends TestCase
         self::assertTrue($this->subject($mutex, $listener)->create($this->event(self::OWN_NAME)));
     }
 
-    public function testOwnTaskWithAHeldLockIsRefusedWithoutARecord(): void
+    public function testOwnTaskLosingTheLockRaceRecordsAStillRunningSkip(): void
     {
+        $task = Tasks::make('report');
         $mutex = $this->createMock(MutexInterface::class);
         $mutex->expects($this->once())->method('acquire')->willReturn(null);
         $listener = $this->createMock(RunListenerInterface::class);
-        $listener->expects($this->never())->method($this->anything());
+        $listener->expects($this->once())->method('skipped')->with($task->id, $this->isInstanceOf(DateTimeImmutable::class), SkipReason::StillRunning);
         $logger = $this->createMock(LoggerInterface::class);
         $logger->expects($this->never())->method($this->anything());
 
@@ -181,6 +182,15 @@ final class LaravelEventMutexUnitTest extends TestCase
         $mutex->expects($this->once())->method('isLocked')->willThrowException(new LockUnavailableException('Redis is down'));
 
         self::assertFalse($this->subject($mutex)->exists($this->event(self::OWN_NAME)));
+    }
+
+    public function testTheScheduleCacheStoreReachesLaravelsMutexForBackgroundAppTasks(): void
+    {
+        $default = $this->createMock(CacheEventMutex::class);
+        $default->expects($this->once())->method('useStore')->with('redis')->willReturnSelf();
+        $subject = $this->subject($this->createStub(MutexInterface::class), laravelDefault: $default);
+
+        self::assertSame($subject, $subject->useStore('redis'));
     }
 
     private function subject(

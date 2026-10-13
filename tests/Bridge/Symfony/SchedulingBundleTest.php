@@ -32,6 +32,7 @@ use Symfony\Component\DependencyInjection\Exception\ServiceCircularReferenceExce
 use Symfony\Component\DependencyInjection\Extension\ConfigurationExtensionInterface;
 use Symfony\Component\Filesystem\Exception\IOException;
 use Symfony\Component\Filesystem\Filesystem;
+use Symfony\Component\Finder\Finder;
 
 final class SchedulingBundleTest extends TestCase
 {
@@ -173,6 +174,62 @@ final class SchedulingBundleTest extends TestCase
             'php /app/bin/console app:hello',
             "php /app/bin/console reports:send 'weekly' '--queue=high' '--force'",
         ], $commands);
+    }
+
+    /**
+     * @throws Exception
+     * @throws InvalidTaskException
+     * @throws StorageException
+     */
+    public function testUnreachableDatabaseLeavesTheYamlTasksRunningAndRefusesWrites(): void
+    {
+        $kernel = $this->boot([
+            ...$this->connection(),
+            'console_binary' => 'php /app/bin/console',
+            'tasks_file' => $this->tasksFile($this->row($this->id, 'app:hello')),
+            'database' => ['enabled' => true, 'dsn' => "sqlite:{$this->directory}/missing/tasks.sqlite"],
+        ], [SchedulerInterface::class], withLogger: true);
+
+        $schedule = $this->crunzTasks($kernel)->schedule();
+
+        self::assertCount(1, $schedule->events());
+        self::assertSame('php /app/bin/console app:hello', $schedule->events()[0]->buildCommand());
+        $logger = $kernel->getContainer()->get('logger');
+        self::assertInstanceOf(CollectingLogger::class, $logger);
+        self::assertCount(1, $logger->records);
+        self::assertSame('warning', $logger->records[0]['level']);
+        self::assertSame('Database task source unreachable; running the YAML tasks only', $logger->records[0]['message']);
+        $scheduler = $kernel->getContainer()->get(SchedulerInterface::class);
+        self::assertInstanceOf(SchedulerInterface::class, $scheduler);
+        $this->expectException(TaskNotWritableException::class);
+        $scheduler->schedule(Tasks::make("{$this->id}-db"));
+    }
+
+    /**
+     * @throws Exception
+     * @throws IOException
+     * @throws RedisException
+     */
+    public function testUnconfiguredHostIsResolvedWhenTheContainerRunsNotWhenItCompiles(): void
+    {
+        $hostname = gethostname();
+        self::assertIsString($hostname);
+        // A config identical to another test's compiles to the same container class, which PHP then reuses.
+        $kernel = $this->boot([...$this->connection(), 'console_binary' => 'php /srv/bin/console',
+            'tasks_file' => $this->tasksFile($this->row($this->id, 'app:hello'))]);
+
+        foreach ($this->crunzTasks($kernel)->schedule()->events()[0]->beforeCallbacks() as $callback) {
+            $callback();
+        }
+
+        $compiled = '';
+        foreach (new Finder()->files()->in($kernel->getCacheDir())->name('*.php') as $file) {
+            $compiled .= $file->getContents();
+        }
+        self::assertFalse(str_contains($compiled, "'{$hostname}'"), "The compiled container holds the hostname {$hostname}");
+        $recorded = $this->redis->lIndex("scheduler:runs:{$this->id}", 0);
+        self::assertIsString($recorded);
+        self::assertStringContainsString('"host":'.json_encode($hostname), $recorded);
     }
 
     /**

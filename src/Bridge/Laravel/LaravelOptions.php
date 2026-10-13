@@ -10,11 +10,14 @@ use Scheduling\Exception\InvalidTaskException;
  */
 final readonly class LaravelOptions
 {
-    private const KNOWN = ['output_file'];
+    private const array KNOWN = ['output_file'];
 
+    /** @param string|null $outputFile the file the task's output is appended to; null keeps Laravel's default */
     public function __construct(public ?string $outputFile = null) {}
 
     /**
+     * Reads the laravel section of a task's adapter options.
+     *
      * @param array<string, mixed> $raw
      *
      * @throws InvalidTaskException

@@ -18,11 +18,7 @@ use Scheduling\Run\RunListenerInterface;
 use Scheduling\Run\RunRepositoryInterface;
 use Scheduling\Scheduler;
 use Scheduling\SchedulerInterface;
-use Scheduling\Task\CompositeTaskSource;
-use Scheduling\Task\PdoTaskRepository;
 use Scheduling\Task\TaskDefinitionMapper;
-use Scheduling\Task\TaskRepositoryInterface;
-use Scheduling\Task\TaskSourceInterface;
 use Scheduling\Task\YamlTaskSource;
 use Symfony\Component\Config\Definition\Configurator\DefinitionConfigurator;
 use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
@@ -32,6 +28,7 @@ use Symfony\Component\HttpKernel\Bundle\AbstractBundle;
 
 use function Symfony\Component\DependencyInjection\Loader\Configurator\inline_service;
 use function Symfony\Component\DependencyInjection\Loader\Configurator\service;
+use function Symfony\Component\DependencyInjection\Loader\Configurator\service_closure;
 
 /**
  * Wires the package into a Symfony application on the crunz engine: the YAML and optional database task sources,
@@ -39,6 +36,11 @@ use function Symfony\Component\DependencyInjection\Loader\Configurator\service;
  * own Redis, a DSN or `@service_id`, see RedisConnection. Every service is
  * private except CrunzTasks, which the crunz tasks file fetches. Symfony's own Scheduler is not used: a Symfony
  * app runs this package on crunz.
+ *
+ * An unset `host` is read from the machine when the run listener is built, not when the container compiles, so a
+ * container cache shared between servers records each server's own name. The database is connected when the
+ * Scheduler is built, and an unreachable database falls back to the YAML tasks (SchedulerFactory). The default
+ * timezone of the tasks is PHP's default when the container compiles.
  */
 final class SchedulingBundle extends AbstractBundle implements CompilerPassInterface
 {
@@ -117,26 +119,28 @@ final class SchedulingBundle extends AbstractBundle implements CompilerPassInter
 
         if ($database['enabled']) {
             $services->set(self::PDO, PDO::class)->args([$database['dsn'], $database['user'], $database['password']]);
-            $services->set(TaskRepositoryInterface::class, PdoTaskRepository::class)
-                ->args([service(self::PDO), service(TaskDefinitionMapper::class), $database['table']]);
-            $services->set(TaskSourceInterface::class, CompositeTaskSource::class)
-                ->args([[service(YamlTaskSource::class), service(TaskRepositoryInterface::class)]]);
-            $runtime = service(TaskRepositoryInterface::class);
+            $services->set(SchedulerInterface::class, Scheduler::class)
+                ->factory([SchedulerFactory::class, 'withDatabase'])
+                ->args([
+                    service(YamlTaskSource::class),
+                    service_closure(self::PDO),
+                    service(TaskDefinitionMapper::class),
+                    $database['table'],
+                    service(self::LOGGER),
+                ]);
         } else {
-            $services->alias(TaskSourceInterface::class, YamlTaskSource::class);
-            $runtime = null;
+            $services->set(SchedulerInterface::class, Scheduler::class)->args([service(YamlTaskSource::class)]);
         }
 
-        $services->set(SchedulerInterface::class, Scheduler::class)
-            ->args([service(TaskSourceInterface::class), $runtime]);
-        $services->set(RunListenerInterface::class, RecordingRunListener::class)
-            ->factory([RunListenerFactory::class, 'create'])
-            ->args([
-                service(SchedulerInterface::class),
-                service(RunRepositoryInterface::class),
-                $config['host'] ?? gethostname() ?: 'unknown',
-                service(self::LOGGER),
-            ]);
+        if (null === $config['host']) {
+            $services->set(RunListenerInterface::class, RecordingRunListener::class)
+                ->factory([RunListenerFactory::class, 'onThisHost'])
+                ->args([service(SchedulerInterface::class), service(RunRepositoryInterface::class), service(self::LOGGER)]);
+        } else {
+            $services->set(RunListenerInterface::class, RecordingRunListener::class)
+                ->factory([RunListenerFactory::class, 'create'])
+                ->args([service(SchedulerInterface::class), service(RunRepositoryInterface::class), $config['host'], service(self::LOGGER)]);
+        }
         $services->set(Schedule::class);
         $services->set(CrunzEngine::class)->args([
             service(Schedule::class),

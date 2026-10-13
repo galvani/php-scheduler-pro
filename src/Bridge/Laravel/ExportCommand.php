@@ -8,8 +8,10 @@ use Illuminate\Console\Command;
 use Illuminate\Console\Scheduling\CallbackEvent;
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Contracts\Container\BindingResolutionException;
 use ReflectionException;
 use Scheduling\Exception\InvalidTaskException;
+use Scheduling\SchedulerInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Yaml\Yaml;
 
@@ -19,11 +21,11 @@ use Symfony\Component\Yaml\Yaml;
  * for every artisan command, with review notes above each task for what changes. Everything it cannot express
  * (closures, jobs, shell commands, sub-minute entries) is listed in a trailing `# Not exported:` block. The
  * output is meant to be pasted into the tasks file one task at a time, deleting the PHP line after each.
- * Tasks the package registered itself are skipped, so running the export again after a paste lists the rest.
+ * Tasks the package registered itself are skipped, so running the export again after a paste lists the rest, and
+ * no exported id repeats the id of a task in the tasks file or the database: enabled, disabled or refused.
  */
 final class ExportCommand extends Command
 {
-    private const string OWN_MUTEX_PREFIX = 'scheduler:task:';
     private const int PLACEHOLDER_MAX_RUNTIME = 3600;
     private const int MAX_ID_LENGTH = 100;
 
@@ -35,20 +37,20 @@ final class ExportCommand extends Command
      * Prints the tasks file to stdout; always succeeds, because an entry that cannot be exported is reported
      * in the output, not as a failure.
      *
+     * @throws BindingResolutionException
      * @throws ReflectionException
      */
     public function handle(Schedule $schedule, Config $config): int
     {
-        $taken = [];
-        $appEvents = [];
-        foreach ($schedule->events() as $event) {
-            $mutex = $event->mutexName();
-            if (str_starts_with($mutex, self::OWN_MUTEX_PREFIX)) {
-                $taken[] = substr($mutex, strlen(self::OWN_MUTEX_PREFIX));
-            } else {
-                $appEvents[] = $event;
+        $set = $this->laravel->make(SchedulerInterface::class)->tasks();
+        $taken = array_map(strval(...), array_keys($set->tasks));
+        foreach ($set->problems as $problem) {
+            if (null !== $problem->taskId) {
+                $taken[] = $problem->taskId;
             }
         }
+        $index = $this->laravel->make(TaskIndex::class);
+        $appEvents = array_filter($schedule->events(), static fn (Event $event): bool => null === $index->get($event->mutexName()));
 
         $tasks = [];
         $notExported = [];
@@ -66,7 +68,7 @@ final class ExportCommand extends Command
     }
 
     /**
-     * @param list<string> $taken ids already used by the package's own tasks or earlier exported entries; the new id is added
+     * @param list<string> $taken ids already used by the package's tasks or earlier exported entries; the new id is added
      *
      * @return string the task's comment lines and YAML, indented to sit under `tasks:`
      *

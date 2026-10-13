@@ -115,6 +115,25 @@ final class ExportCommandTest extends LaravelTestCase
     /**
      * @throws BindingResolutionException
      */
+    public function testAnIdTakenByADisabledTaskIsNotReused(): void
+    {
+        $this->writeTasks(<<<YAML
+            tasks:
+              scheduler-test-mark:
+                schedule: "30 14 * * *"
+                command: scheduler-test:mark
+                arguments: ["{$this->markerFile('x')}"]
+                max_runtime: 120
+                enabled: false
+            YAML);
+        $this->laravel()->make(Schedule::class)->command('scheduler-test:mark')->daily();
+
+        self::assertSame(['scheduler-test-mark-2'], array_keys($this->loadExport($this->export())));
+    }
+
+    /**
+     * @throws BindingResolutionException
+     */
     public function testNothingToExportStillPrintsTheNotExportedBlock(): void
     {
         $this->laravel()->make(Schedule::class)->exec('ls')->hourly();

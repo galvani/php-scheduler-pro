@@ -22,8 +22,14 @@ use Scheduling\Run\SkipReason;
  */
 final class LaravelSchedulingMutex implements SchedulingMutex
 {
-    private const TTL_SECONDS = 3600;
+    private const int TTL_SECONDS = 3600;
 
+    /**
+     * @param MutexInterface       $mutex    takes the per-minute claims
+     * @param TaskIndex            $index    tells the package's tasks from the app's own
+     * @param RunListenerInterface $listener records the skips of the package's tasks
+     * @param LoggerInterface      $logger   warns about an app task skipped for unreachable lock storage
+     */
     public function __construct(
         private readonly MutexInterface $mutex,
         private readonly TaskIndex $index,

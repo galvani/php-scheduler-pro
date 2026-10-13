@@ -18,7 +18,14 @@ final class CapabilitiesCommand extends Command
         parent::__construct();
     }
 
-    /** {@inheritDoc} */
+    /**
+     * Executes the current command.
+     *
+     * Prints one row per capability with how the crunz engine fulfils it: native, polyfilled by this package, or
+     * unavailable.
+     *
+     * @return int 0 if everything went fine, or an exit code
+     */
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $report = $this->engine->capabilities();

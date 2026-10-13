@@ -20,7 +20,14 @@ final class HelloCommand extends Command
         parent::__construct();
     }
 
-    /** {@inheritDoc} */
+    /**
+     * Executes the current command.
+     *
+     * Appends one line, the current time and the host name, to the log file; the demo reads that file to see which
+     * server ran the task.
+     *
+     * @return int 0 if everything went fine, or an exit code: 1 when the line could not be written
+     */
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $written = file_put_contents($this->log, date(DATE_ATOM)." {$this->host}\n", FILE_APPEND | LOCK_EX);

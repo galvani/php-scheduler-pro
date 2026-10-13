@@ -13,6 +13,7 @@ use ReflectionProperty;
  */
 final readonly class EventInspector
 {
+    /** @param Event $event an entry of the application's own schedule */
     public function __construct(private Event $event) {}
 
     /**

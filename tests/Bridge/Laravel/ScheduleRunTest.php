@@ -15,6 +15,8 @@ use Scheduling\Run\RedisRunRepository;
 use Scheduling\Run\RunState;
 use Scheduling\Run\SkipReason;
 use Scheduling\Task\TaskId;
+use Scheduling\Task\TaskSet;
+use Scheduling\Task\TaskSourceInterface;
 use Scheduling\Tests\Run\CollectingLogger;
 
 final class ScheduleRunTest extends LaravelTestCase
@@ -143,6 +145,36 @@ final class ScheduleRunTest extends LaravelTestCase
         self::assertNotNull($skipped);
         self::assertSame(SkipReason::ConditionNotMet->value, $skipped->detail);
         self::assertNull($this->runs()->lastOf(new TaskId($id), RunState::Started));
+    }
+
+    /**
+     * @throws BindingResolutionException
+     * @throws InvalidTaskException
+     * @throws StorageException
+     */
+    public function testARunReadsTheTasksOnce(): void
+    {
+        $id = $this->newTaskId();
+        $this->writeDueTask($id);
+        $source = new class($this->laravel()->make(TaskSourceInterface::class)) implements TaskSourceInterface {
+            public int $loads = 0;
+
+            public function __construct(private readonly TaskSourceInterface $inner) {}
+
+            public function load(): TaskSet
+            {
+                ++$this->loads;
+
+                return $this->inner->load();
+            }
+        };
+        $this->laravel()->instance(TaskSourceInterface::class, $source);
+        $this->travelTo(new DateTimeImmutable(self::DUE_MINUTE.' UTC'));
+
+        $this->runSchedule();
+
+        self::assertSame(1, $source->loads);
+        self::assertNotNull($this->runs()->lastOf(new TaskId($id), RunState::Finished));
     }
 
     /** @throws BindingResolutionException */

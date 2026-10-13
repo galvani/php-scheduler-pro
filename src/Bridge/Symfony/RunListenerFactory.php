@@ -13,6 +13,9 @@ use Scheduling\SchedulerInterface;
  */
 final readonly class RunListenerFactory
 {
+    /**
+     * Builds the listener for the configured `host`, the name every run record of this server carries.
+     */
     public static function create(
         SchedulerInterface $scheduler,
         RunRepositoryInterface $runs,
@@ -20,5 +23,17 @@ final readonly class RunListenerFactory
         LoggerInterface $logger,
     ): RecordingRunListener {
         return new RecordingRunListener($runs, $scheduler->tasks()->tasks, $host, $logger);
+    }
+
+    /**
+     * Builds the listener when no `host` is configured: the run records carry this machine's hostname, read now
+     * rather than when the container compiles, or "unknown" when PHP cannot read it.
+     */
+    public static function onThisHost(
+        SchedulerInterface $scheduler,
+        RunRepositoryInterface $runs,
+        LoggerInterface $logger,
+    ): RecordingRunListener {
+        return self::create($scheduler, $runs, gethostname() ?: 'unknown', $logger);
     }
 }

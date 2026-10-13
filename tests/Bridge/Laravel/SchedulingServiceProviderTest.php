@@ -53,6 +53,15 @@ final class SchedulingServiceProviderTest extends LaravelTestCase
         );
     }
 
+    public function testTheHostIsTheRuntimeHostnameNotAValueFrozenIntoTheConfig(): void
+    {
+        $published = require __DIR__.'/../../../config/scheduling.php';
+
+        self::assertIsArray($published);
+        self::assertNull($published['host']);
+        self::assertSame(gethostname(), config('scheduling.host'));
+    }
+
     public function testConfigAndMigrationArePublishable(): void
     {
         $config = ServiceProvider::pathsToPublish(SchedulingServiceProvider::class, 'scheduling-config');
