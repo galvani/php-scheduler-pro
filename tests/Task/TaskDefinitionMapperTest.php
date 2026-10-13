@@ -93,6 +93,8 @@ final class TaskDefinitionMapperTest extends TestCase
         yield 'invalid schedule' => [[...self::MINIMAL, 'schedule' => 'nope'], 'cron'];
         yield 'command not a string' => [[...self::MINIMAL, 'command' => ['a']], 'command'];
         yield 'empty command' => [[...self::MINIMAL, 'command' => ''], 'Command'];
+        yield 'command with shell syntax' => [[...self::MINIMAL, 'command' => 'app:hello; touch /tmp/pwned'], 'Command name'];
+        yield 'option name with shell syntax' => [[...self::MINIMAL, 'options' => ['z; touch /tmp/pwned #' => true]], 'Option name'];
         yield 'max_runtime not an int' => [[...self::MINIMAL, 'max_runtime' => '600'], 'max_runtime'];
         yield 'max_runtime float' => [[...self::MINIMAL, 'max_runtime' => 60.5], 'max_runtime'];
         yield 'max_runtime zero' => [[...self::MINIMAL, 'max_runtime' => 0], 'max_runtime'];

@@ -132,6 +132,33 @@ final class YamlTaskSourceTest extends TestCase
         self::assertStringContainsString('colour', $set->problems[2]->reason);
     }
 
+    public function testARowWithAShellCommandNameOrOptionNameIsAProblemAndSkipped(): void
+    {
+        $set = $this->source(<<<'YAML'
+            tasks:
+              good:
+                schedule: "0 6 * * *"
+                command: a
+                max_runtime: 60
+              bad-command:
+                schedule: "0 6 * * *"
+                command: "app:hello; touch /tmp/pwned"
+                max_runtime: 60
+              bad-option:
+                schedule: "0 6 * * *"
+                command: a
+                options:
+                  "z; touch /tmp/pwned #": true
+                max_runtime: 60
+            YAML)->load();
+
+        self::assertSame(['good'], array_keys($set->tasks));
+        self::assertSame(['bad-command', 'bad-option'], array_map(static fn ($problem) => $problem->taskId, $set->problems));
+        self::assertSame('yaml', $set->problems[0]->source);
+        self::assertStringContainsString('Command name', $set->problems[0]->reason);
+        self::assertStringContainsString('Option name', $set->problems[1]->reason);
+    }
+
     private function source(string $yaml): YamlTaskSource
     {
         $path = "{$this->directory}/tasks.yaml";

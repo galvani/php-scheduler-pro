@@ -5,6 +5,7 @@ namespace Scheduling\Tests\Bridge\Laravel;
 use DateInvalidTimeZoneException;
 use DateTimeImmutable;
 use DateTimeZone;
+use Illuminate\Console\Application as ConsoleApplication;
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\EventMutex;
 use Illuminate\Console\Scheduling\Schedule;
@@ -12,6 +13,7 @@ use Illuminate\Console\Scheduling\SchedulingMutex;
 use Illuminate\Container\Container;
 use Illuminate\Foundation\Application;
 use LogicException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Scheduling\Bridge\Laravel\LaravelEngine;
@@ -98,6 +100,37 @@ final class LaravelEngineUnitTest extends TestCase
         self::assertStringContainsString('weekly', $command);
         self::assertStringContainsString("--queue='high'", $command);
         self::assertStringContainsString('--force', $command);
+    }
+
+    /**
+     * @param list<string>                                      $arguments
+     * @param array<non-empty-string, string|list<string>|true> $options
+     *
+     * @throws InvalidTaskException
+     */
+    #[DataProvider('commandLines')]
+    public function testRegisterQuotesEveryArgumentAndOptionValue(array $arguments, array $options, string $expected): void
+    {
+        $schedule = $this->newSchedule();
+        $task = new TaskDefinition(new TaskId('quoted'), new CronExpression('* * * * *'), new Command('app:hello', $arguments, $options), new DateTimeZone('UTC'), new LockPolicy(60));
+
+        $this->engine($schedule, $this->createStub(RunListenerInterface::class), new TaskIndex())->register($this->keyed($task));
+
+        self::assertSame(ConsoleApplication::formatCommandString('app:hello').$expected, $schedule->events()[0]->command);
+    }
+
+    /** @return iterable<string, array{list<string>, array<non-empty-string, string|list<string>|true>, string}> */
+    public static function commandLines(): iterable
+    {
+        yield 'nothing' => [[], [], ''];
+        yield 'argument that looks like an option' => [['--x; touch /tmp/pwned1'], [], " '--x; touch /tmp/pwned1'"];
+        yield 'short option lookalike argument' => [['-x'], [], " '-x'"];
+        yield 'numeric argument' => [['42'], [], " '42'"];
+        yield 'option value that looks like an option' => [[], ['from' => '--y; touch /tmp/pwned2'], " --from='--y; touch /tmp/pwned2'"];
+        yield 'list option value with a semicolon' => [[], ['tag' => ['a', 'b; id']], " --tag='a' --tag='b; id'"];
+        yield 'spaces and a quote' => [['a b'], ['from' => "it's"], " 'a b' --from='it'\\''s'"];
+        yield 'flag' => [[], ['force' => true], ' --force'];
+        yield 'empty value' => [[], ['note' => ''], " --note=''"];
     }
 
     public function testRegisterAppendsOutputToTheConfiguredFile(): void

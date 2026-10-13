@@ -3,7 +3,9 @@
 namespace Scheduling\Bridge\Laravel;
 
 use DateTimeImmutable;
+use Illuminate\Console\Application;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Support\ProcessUtils;
 use Scheduling\Capability\Capability;
 use Scheduling\Capability\CapabilityReport;
 use Scheduling\Capability\Fulfilment;
@@ -86,7 +88,7 @@ final class LaravelEngine implements SchedulerEngineInterface
         $this->index->add($mutexName, $task);
 
         $event = $this->schedule
-            ->command($task->command->name, self::parameters($task->command))
+            ->exec(self::commandLine($task->command))
             ->cron($task->schedule->value)
             ->timezone($task->timezone)
             ->createMutexNameUsing($mutexName)
@@ -102,18 +104,29 @@ final class LaravelEngine implements SchedulerEngineInterface
         }
     }
 
-    /** @return array<int|string, string|list<string>> in the shape Schedule::compileParameters() reads */
-    private static function parameters(Command $command): array
+    /**
+     * The artisan command line of a task. It is built here and handed to Schedule::exec() without parameters,
+     * because Schedule::compileParameters() leaves unquoted every value that is numeric or starts with `-`.
+     * Every argument and option value is quoted with ProcessUtils::escapeArgument(); the command and option names
+     * need no quoting because Command only holds letters, digits and `: _ . -` in them. A flag is `--name`, a
+     * string `--name='value'`, a list one `--name='value'` per entry.
+     */
+    private static function commandLine(Command $command): string
     {
-        $parameters = $command->arguments;
+        $words = [Application::formatCommandString($command->name)];
+        foreach ($command->arguments as $argument) {
+            $words[] = ProcessUtils::escapeArgument($argument);
+        }
         foreach ($command->options as $name => $value) {
             if (true === $value) {
-                $parameters[] = "--{$name}";
-            } else {
-                $parameters["--{$name}"] = $value;
+                $words[] = "--{$name}";
+                continue;
+            }
+            foreach ((array) $value as $item) {
+                $words[] = "--{$name}=".ProcessUtils::escapeArgument($item);
             }
         }
 
-        return $parameters;
+        return implode(' ', $words);
     }
 }
