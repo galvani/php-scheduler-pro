@@ -26,6 +26,7 @@ services:
         condition: service_healthy
 
   demo-laravel:
+    build: .
     image: php-scheduler-pro
     user: *user
     command: ["sh", "-c", "composer install --working-dir=demo/laravel --no-interaction && demo/laravel/prove.sh"]
@@ -42,6 +43,7 @@ services:
         condition: service_healthy
 
   demo:
+    build: .
     image: php-scheduler-pro
     user: *user
     command: ["sh", "-c", "composer install --working-dir=demo/symfony --no-interaction --no-scripts && demo/symfony/prove.sh"]
@@ -57,6 +59,7 @@ services:
         condition: service_healthy
 
   install-laravel:
+    build: .
     image: php-scheduler-pro
     user: *user
     command: ["docker/install-test.sh", "laravel"]
@@ -69,6 +72,7 @@ services:
         condition: service_healthy
 
   install-laravel-12:
+    build: .
     image: php-scheduler-pro
     user: *user
     command: ["docker/install-test.sh", "laravel", "^12.0"]
@@ -81,6 +85,7 @@ services:
         condition: service_healthy
 
   install-symfony:
+    build: .
     image: php-scheduler-pro
     user: *user
     command: ["docker/install-test.sh", "symfony"]

@@ -10,9 +10,9 @@ A minimal Symfony 8 app that runs `galvani/php-scheduler-pro` on the crunz engin
 
 ## Run
 
-```
-composer install
-REDIS_PORT=16379 ./prove.sh
+```bash
+docker compose run --rm demo          # from the repo root; Redis is started with it
+composer install && ./prove.sh        # or on the host, against Redis at 127.0.0.1:${REDIS_PORT:-16379}
 ```
 
 `prove.sh` needs Redis on `127.0.0.1:${REDIS_PORT:-16379}`. It deletes only the `scheduler:*hello*` keys and `var/hello.log`.

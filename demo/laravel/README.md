@@ -8,6 +8,7 @@ Nothing else in the app was changed except the files listed below.
 
 | File | What it shows |
 | --- | --- |
+| `composer.json` | the `path` repository at `../..` and `galvani/php-scheduler-pro` in `require` |
 | `scheduling.yaml` | a task of the package: `hello`, every minute, `max_runtime: 30` |
 | `routes/console.php` | the two commands, and `app:legacy-report` scheduled the Laravel way, as an existing app has it |
 | `config/scheduling.php` | the published package config (`php artisan vendor:publish --tag=scheduling-config`) |

@@ -1,6 +1,6 @@
 #!/bin/sh
 # With Docker running: the fixer, PHPStan and the whole test suite in the project's container, against the bundled
-# Redis. Without Docker: the fixer and PHPStan on the host, as before (the tests need a Redis).
+# Redis. Without Docker: the fixer and PHPStan on the host (the tests need a Redis).
 set -e
 export XDEBUG_MODE=off
 
