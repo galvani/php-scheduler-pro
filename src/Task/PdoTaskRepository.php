@@ -19,7 +19,7 @@ use Scheduling\Exception\TaskNotFoundException;
  */
 final readonly class PdoTaskRepository implements TaskRepositoryInterface
 {
-    private const string INTEGRITY_VIOLATION = '23';
+    private const string SAVEPOINT = 'scheduler_add';
 
     /**
      * @param string $table table with an `id` and a `definition` column; only letters, digits and underscores,
@@ -74,8 +74,11 @@ final readonly class PdoTaskRepository implements TaskRepositoryInterface
      * Adds the task. An id that is already stored is refused, never replaced; the storage itself decides, so two
      * writers adding the same id at once get one success and one conflict.
      *
-     * A plain INSERT: the table's primary key rejects a second row with the same id, and that rejection (SQLSTATE
-     * class 23, integrity constraint violation, on SQLite, MySQL and PostgreSQL alike) becomes the conflict.
+     * A plain INSERT: the table's primary key rejects a second row with the same id, and only that rejection becomes
+     * the conflict (SQLSTATE 23505 on PostgreSQL, error 1062 on MySQL, a UNIQUE constraint failure on SQLite); any
+     * other failure, another integrity violation included, is a StorageException. Inside the caller's transaction the
+     * INSERT runs in a savepoint that is rolled back when it fails, because PostgreSQL would otherwise abort the
+     * caller's whole transaction.
      *
      * @throws TaskConflictException when a task with this id is already stored
      * @throws StorageException      when the storage cannot be written or the task cannot be stored as data
@@ -87,14 +90,25 @@ final readonly class PdoTaskRepository implements TaskRepositoryInterface
         } catch (JsonException|InvalidTaskException $e) {
             throw new StorageException("Task {$task->id->value} cannot be stored", previous: $e);
         }
+        $savepoint = $this->pdo->inTransaction();
+        if ($savepoint) {
+            $this->execute('SAVEPOINT '.self::SAVEPOINT);
+        }
         try {
             $this->run("INSERT INTO {$this->table} (id, definition) VALUES (?, ?)", [$task->id->value, $definition]);
         } catch (StorageException $e) {
+            if ($savepoint) {
+                $this->execute('ROLLBACK TO SAVEPOINT '.self::SAVEPOINT);
+                $this->execute('RELEASE SAVEPOINT '.self::SAVEPOINT);
+            }
             $cause = $e->getPrevious();
-            if ($cause instanceof PDOException && str_starts_with((string) $cause->getCode(), self::INTEGRITY_VIOLATION)) {
+            if ($cause instanceof PDOException && $this->isDuplicateKey($cause)) {
                 throw new TaskConflictException("Task {$task->id->value} is already scheduled", previous: $e);
             }
             throw $e;
+        }
+        if ($savepoint) {
+            $this->execute('RELEASE SAVEPOINT '.self::SAVEPOINT);
         }
     }
 
@@ -102,7 +116,8 @@ final readonly class PdoTaskRepository implements TaskRepositoryInterface
      * Marks the task disabled; it stays stored but does not run.
      *
      * Reads the stored definition, sets `enabled: false` and writes it back with an UPDATE; no row read, or no row
-     * updated because the task was removed in between, means the task is not there.
+     * updated because the task was removed in between, means the task is not there. MySQL counts only the rows an
+     * UPDATE changed, so an UPDATE that changed nothing is checked against a fresh read before it means "not there".
      *
      * @throws TaskNotFoundException when no task with this id is stored
      * @throws StorageException      when the storage cannot be read or written
@@ -127,7 +142,8 @@ final readonly class PdoTaskRepository implements TaskRepositoryInterface
         } catch (JsonException $e) {
             throw new StorageException("Task {$id->value} cannot be disabled", previous: $e);
         }
-        if (0 === $this->changedRows("UPDATE {$this->table} SET definition = ? WHERE id = ?", [$definition, $id->value])) {
+        if (0 === $this->changedRows("UPDATE {$this->table} SET definition = ? WHERE id = ?", [$definition, $id->value])
+            && !$this->exists($id)) {
             throw new TaskNotFoundException("Task {$id->value} is not scheduled");
         }
     }
@@ -144,6 +160,49 @@ final readonly class PdoTaskRepository implements TaskRepositoryInterface
     {
         if (0 === $this->changedRows("DELETE FROM {$this->table} WHERE id = ?", [$id->value])) {
             throw new TaskNotFoundException("Task {$id->value} is not scheduled");
+        }
+    }
+
+    /**
+     * Whether a row with this id is stored.
+     *
+     * @throws StorageException
+     */
+    private function exists(TaskId $id): bool
+    {
+        try {
+            return false !== $this->run("SELECT 1 FROM {$this->table} WHERE id = ?", [$id->value])->fetchColumn();
+        } catch (PDOException $e) {
+            throw new StorageException("Task {$id->value} cannot be read", previous: $e);
+        }
+    }
+
+    /**
+     * Whether the failure is the primary key refusing a second row with the same id, as opposed to any other
+     * integrity violation (NOT NULL, CHECK, foreign key), which shares SQLSTATE class 23 on every driver.
+     */
+    private function isDuplicateKey(PDOException $e): bool
+    {
+        [$state, $driverCode, $message] = ($e->errorInfo ?? []) + [null, null, null];
+
+        return '23505' === $state
+            || ('23000' === $state && 1062 === $driverCode)
+            || ('23000' === $state && 19 === $driverCode && is_string($message) && str_starts_with($message, 'UNIQUE constraint failed'));
+    }
+
+    /**
+     * Runs a statement without parameters or a result, for the savepoint commands.
+     *
+     * @throws StorageException
+     */
+    private function execute(string $sql): void
+    {
+        try {
+            if (false === $this->pdo->exec($sql)) {
+                throw new StorageException("Query failed: {$sql}");
+            }
+        } catch (PDOException $e) {
+            throw new StorageException("Query failed: {$e->getMessage()}", previous: $e);
         }
     }
 

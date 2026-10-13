@@ -28,7 +28,8 @@ interface SchedulerInterface
      * a task: to change one, remove it and schedule it again.
      *
      * @throws TaskConflictException    when a task with this id is already scheduled
-     * @throws TaskNotWritableException when the id belongs to a read-only source or no writable source is configured
+     * @throws TaskNotWritableException when the id belongs to a read-only source, a read-only source cannot be read or
+     *                                  reports this id invalid, or no writable source is configured
      * @throws StorageException         when the writable source cannot store it
      */
     public function schedule(TaskDefinition $task): void;
@@ -37,7 +38,8 @@ interface SchedulerInterface
      * Keeps the task but stops it running, from the next tick on.
      *
      * @throws TaskNotFoundException    when no task with this id is scheduled
-     * @throws TaskNotWritableException when the id belongs to a read-only source or no writable source is configured
+     * @throws TaskNotWritableException when the id belongs to a read-only source, a read-only source cannot be read or
+     *                                  reports this id invalid, or no writable source is configured
      * @throws StorageException         when the writable source cannot store it
      */
     public function disable(TaskId $id): void;
@@ -46,7 +48,8 @@ interface SchedulerInterface
      * Deletes the task from the writable source.
      *
      * @throws TaskNotFoundException    when no task with this id is scheduled
-     * @throws TaskNotWritableException when the id belongs to a read-only source or no writable source is configured
+     * @throws TaskNotWritableException when the id belongs to a read-only source, a read-only source cannot be read or
+     *                                  reports this id invalid, or no writable source is configured
      * @throws StorageException         when the writable source cannot store it
      */
     public function remove(TaskId $id): void;
@@ -55,8 +58,9 @@ interface SchedulerInterface
      * Gives the current task list to an engine. A task needing a capability the engine reports as
      * unavailable is refused before the engine sees it; tasks the engine itself refuses come back as problems.
      *
-     * @return TaskSet the tasks the engine registered, and every problem: from the sources, the
-     *                 capability check and the engine
+     * @return TaskSet the tasks handed to the engine that it did not refuse, disabled ones included (each engine
+     *                 keeps them off the schedule), and every problem: from the sources, the capability check
+     *                 and the engine
      */
     public function registerWith(SchedulerEngineInterface $engine): TaskSet;
 }

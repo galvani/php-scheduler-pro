@@ -302,6 +302,118 @@ final class PdoTaskRepositoryTest extends TestCase
     }
 
     /**
+     * @throws PDOException
+     * @throws StorageException
+     * @throws TaskConflictException
+     */
+    public function testAConflictInsideTheCallersTransactionLeavesItUsable(): void
+    {
+        $repository = $this->repository();
+        $this->pdo->beginTransaction();
+        $repository->add(Tasks::make('report'));
+
+        try {
+            $repository->add(Tasks::make('report', enabled: false));
+            self::fail('A second add of the same id must be refused');
+        } catch (TaskConflictException) {
+        }
+        $repository->add(Tasks::make('other'));
+        $this->pdo->commit();
+
+        self::assertSame(['report', 'other'], array_keys($repository->load()->tasks));
+        self::assertTrue($repository->load()->tasks['report']->enabled);
+    }
+
+    /**
+     * PostgreSQL aborts the whole transaction on a failed statement, which SQLite cannot show; the double
+     * verifies that the INSERT runs inside a savepoint that is rolled back on failure.
+     *
+     * @throws StorageException
+     */
+    public function testAFailedAddInsideTheCallersTransactionRollsBackToASavepoint(): void
+    {
+        $duplicate = new PDOException('duplicate key value violates unique constraint');
+        $duplicate->errorInfo = ['23505', 7, 'duplicate key value violates unique constraint'];
+        $insert = $this->createStub(PDOStatement::class);
+        $insert->method('execute')->willThrowException($duplicate);
+        $statements = [];
+        $pdo = $this->createStub(PDO::class);
+        $pdo->method('inTransaction')->willReturn(true);
+        $pdo->method('prepare')->willReturn($insert);
+        $pdo->method('exec')->willReturnCallback(static function (string $sql) use (&$statements): int {
+            $statements[] = $sql;
+
+            return 0;
+        });
+
+        try {
+            new PdoTaskRepository($pdo, $this->mapper())->add(Tasks::make('report'));
+            self::fail('A duplicate key must be a conflict');
+        } catch (TaskConflictException) {
+        }
+
+        self::assertSame(['SAVEPOINT scheduler_add', 'ROLLBACK TO SAVEPOINT scheduler_add', 'RELEASE SAVEPOINT scheduler_add'], $statements);
+    }
+
+    /**
+     * @throws PDOException
+     * @throws StorageException
+     * @throws TaskConflictException
+     */
+    public function testAnIntegrityViolationOtherThanADuplicateIdIsAStorageException(): void
+    {
+        $this->pdo->exec('CREATE TABLE owned_tasks (id VARCHAR(100) PRIMARY KEY, definition TEXT NOT NULL, owner TEXT NOT NULL)');
+        $repository = new PdoTaskRepository($this->pdo, $this->mapper(), 'owned_tasks');
+
+        $this->expectException(StorageException::class);
+
+        $repository->add(Tasks::make('report'));
+    }
+
+    /**
+     * @throws InvalidTaskException
+     * @throws StorageException
+     * @throws TaskConflictException
+     * @throws TaskNotFoundException
+     */
+    public function testDisablingTwiceKeepsTheTaskDisabled(): void
+    {
+        $repository = $this->repository();
+        $repository->add(Tasks::make('report'));
+
+        $repository->disable(new TaskId('report'));
+        $repository->disable(new TaskId('report'));
+
+        self::assertFalse($repository->load()->tasks['report']->enabled);
+    }
+
+    /**
+     * MySQL counts the rows an UPDATE changed, not the rows it matched, so disabling a task that is already
+     * disabled reports zero rows; the double plays that answer.
+     *
+     * @throws InvalidTaskException
+     * @throws StorageException
+     * @throws TaskNotFoundException
+     */
+    public function testDisablingAnAlreadyDisabledTaskWhereTheDatabaseCountsChangedRowsIsNotNotFound(): void
+    {
+        $definition = '{"schedule":"0 6 * * *","command":"reports:send","max_runtime":600,"enabled":false}';
+        $pdo = $this->createStub(PDO::class);
+        $pdo->method('prepare')->willReturnCallback(function (string $sql) use ($definition): PDOStatement {
+            $statement = $this->createStub(PDOStatement::class);
+            $statement->method('execute')->willReturn(true);
+            $statement->method('fetchColumn')->willReturn(str_starts_with($sql, 'SELECT definition') ? $definition : 1);
+            $statement->method('rowCount')->willReturn(0);
+
+            return $statement;
+        });
+
+        new PdoTaskRepository($pdo, $this->mapper())->disable(new TaskId('report'));
+
+        $this->addToAssertionCount(1);
+    }
+
+    /**
      * @throws StorageException
      * @throws TaskConflictException
      */
