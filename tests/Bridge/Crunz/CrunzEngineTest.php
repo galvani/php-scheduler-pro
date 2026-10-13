@@ -9,6 +9,7 @@ use DateInvalidTimeZoneException;
 use DateTimeZone;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\LogLevel;
 use Redis;
 use RedisException;
 use ReflectionException;
@@ -17,14 +18,15 @@ use Scheduling\Bridge\Crunz\CrunzEngine;
 use Scheduling\Exception\InvalidTaskException;
 use Scheduling\Exception\LockUnavailableException;
 use Scheduling\Lock\LockKey;
+use Scheduling\Lock\MutexInterface;
 use Scheduling\Lock\RedisMutex;
 use Scheduling\Task\AdapterOptions;
 use Scheduling\Task\Command;
-use Scheduling\Task\Condition\Environments;
 use Scheduling\Task\CronExpression;
 use Scheduling\Task\LockPolicy;
 use Scheduling\Task\TaskDefinition;
 use Scheduling\Task\TaskId;
+use Scheduling\Tests\CollectingLogger;
 use Scheduling\Tests\RedisConnection;
 use Scheduling\Tests\Task\Tasks;
 
@@ -69,7 +71,7 @@ final class CrunzEngineTest extends TestCase
             new LockPolicy(600),
         );
 
-        $event = $this->register($task, new CollectingListener());
+        $event = $this->register($task);
 
         self::assertSame('*/5 6 * * 1-5', $event->getExpression());
         $timezone = new ReflectionProperty(Event::class, 'timezone')->getValue($event);
@@ -83,7 +85,7 @@ final class CrunzEngineTest extends TestCase
 
     public function testDisabledTaskIsNotRegistered(): void
     {
-        $engine = $this->engine($schedule = new Schedule(), new CollectingListener());
+        $engine = $this->engine($schedule = new Schedule());
 
         $problems = $engine->register([$this->id => Tasks::make($this->id, enabled: false)]);
 
@@ -102,7 +104,7 @@ final class CrunzEngineTest extends TestCase
             $base->lock,
             options: new AdapterOptions(['crunz' => ['bogus' => 1, 'other' => true]]),
         );
-        $engine = $this->engine($schedule = new Schedule(), new CollectingListener());
+        $engine = $this->engine($schedule = new Schedule());
 
         $problems = $engine->register([$this->id => $task]);
 
@@ -121,10 +123,8 @@ final class CrunzEngineTest extends TestCase
     {
         $this->avoidMinuteBoundary();
         $task = Tasks::make($this->id);
-        $firstListener = new CollectingListener();
-        $secondListener = new CollectingListener();
-        $first = $this->register($task, $firstListener);
-        $second = $this->register($task, $secondListener);
+        $first = $this->register($task);
+        $second = $this->register($task);
         $utc = new DateTimeZone('UTC');
 
         $firstPasses = $first->filtersPass($utc);
@@ -132,22 +132,7 @@ final class CrunzEngineTest extends TestCase
 
         self::assertTrue($firstPasses);
         self::assertFalse($secondPasses);
-        self::assertSame([], $firstListener->calls);
-        self::assertSame(["skipped:{$this->id}:ran_on_another_server"], $secondListener->calls);
         self::assertCount(1, $this->minuteClaims());
-    }
-
-    /** @throws RedisException */
-    public function testFalseConditionSkipsWithConditionNotMetBeforeAnyClaim(): void
-    {
-        $listener = new CollectingListener();
-        $event = $this->register(Tasks::make($this->id, [new Environments(['production'], 'staging')]), $listener);
-
-        $passes = $event->filtersPass(new DateTimeZone('UTC'));
-
-        self::assertFalse($passes);
-        self::assertSame(["skipped:{$this->id}:condition_not_met"], $listener->calls);
-        self::assertSame([], $this->keys());
     }
 
     /**
@@ -158,8 +143,7 @@ final class CrunzEngineTest extends TestCase
     public function testOverlapLockIsTakenThroughTheMutexAndReleasedAfterTheRun(): void
     {
         $this->avoidMinuteBoundary();
-        $listener = new CollectingListener();
-        $event = $this->register(Tasks::make($this->id), $listener);
+        $event = $this->register(Tasks::make($this->id));
         $overlapKey = LockKey::forTask(new TaskId($this->id));
         self::assertFalse($this->mutex->isLocked($overlapKey));
 
@@ -170,7 +154,6 @@ final class CrunzEngineTest extends TestCase
         $this->invokeAll($event->beforeCallbacks());
         $this->invokeAll($event->afterCallbacks());
         self::assertFalse($this->mutex->isLocked($overlapKey));
-        self::assertSame(["started:{$this->id}", "finished:{$this->id}"], $listener->calls);
     }
 
     /**
@@ -178,17 +161,31 @@ final class CrunzEngineTest extends TestCase
      * @throws LockUnavailableException
      * @throws RedisException
      */
-    public function testOverlapCheckRecordsStillRunningWhileThePreviousRunHoldsTheLock(): void
+    public function testOverlapCheckRefusesWhileThePreviousRunHoldsTheLock(): void
     {
         $this->avoidMinuteBoundary();
-        $listener = new CollectingListener();
-        $event = $this->register(Tasks::make($this->id), $listener);
+        $event = $this->register(Tasks::make($this->id));
         self::assertNotNull($this->mutex->acquire(LockKey::forTask(new TaskId($this->id)), 60));
 
         $passes = $event->filtersPass(new DateTimeZone('UTC'));
 
         self::assertFalse($passes);
-        self::assertSame(["skipped:{$this->id}:still_running"], $listener->calls);
+    }
+
+    public function testUnreachableLockStorageSkipsTheRunAndLogsAWarning(): void
+    {
+        $mutex = $this->createStub(MutexInterface::class);
+        $mutex->method('acquire')->willThrowException(new LockUnavailableException('Redis is down'));
+        $logger = new CollectingLogger();
+        $schedule = new Schedule();
+        new CrunzEngine($schedule, $mutex, self::CONSOLE, $logger)->register([$this->id => Tasks::make($this->id)]);
+
+        $passes = $schedule->events()[0]->filtersPass(new DateTimeZone('UTC'));
+
+        self::assertFalse($passes);
+        self::assertCount(1, $logger->records);
+        self::assertSame(LogLevel::WARNING, $logger->records[0]['level']);
+        self::assertSame($this->id, $logger->records[0]['context']['task_id']);
     }
 
     /**
@@ -203,7 +200,7 @@ final class CrunzEngineTest extends TestCase
     {
         $task = new TaskDefinition(new TaskId($this->id), new CronExpression('* * * * *'), new Command('app:hello', $arguments, $options), new DateTimeZone('UTC'), new LockPolicy(60));
 
-        self::assertSame('php /app/bin/console app:hello'.$expected, $this->register($task, new CollectingListener())->buildCommand());
+        self::assertSame('php /app/bin/console app:hello'.$expected, $this->register($task)->buildCommand());
     }
 
     /** @return iterable<string, array{list<string>, array<non-empty-string, string|list<string>|true>, string}> */
@@ -222,12 +219,11 @@ final class CrunzEngineTest extends TestCase
      * @throws LockUnavailableException
      * @throws RedisException
      */
-    public function testFailedRunReleasesTheLockAndIsRecorded(): void
+    public function testFailedRunReleasesTheLock(): void
     {
         $this->avoidMinuteBoundary();
-        $listener = new CollectingListener();
         $schedule = new Schedule();
-        $this->engine($schedule, $listener)->register([$this->id => Tasks::make($this->id)]);
+        $this->engine($schedule)->register([$this->id => Tasks::make($this->id)]);
         $event = $schedule->events()[0];
         $overlapKey = LockKey::forTask(new TaskId($this->id));
         self::assertTrue($event->filtersPass(new DateTimeZone('UTC')));
@@ -239,51 +235,19 @@ final class CrunzEngineTest extends TestCase
         }
 
         self::assertFalse($this->mutex->isLocked($overlapKey));
-        self::assertSame(["failed:{$this->id}"], $listener->calls);
     }
 
-    /**
-     * @throws InvalidTaskException
-     * @throws LockUnavailableException
-     * @throws RedisException
-     */
-    public function testEachEndCarriesTheRunIdItsOwnStartReturned(): void
-    {
-        $this->avoidMinuteBoundary();
-        $listener = new CollectingListener();
-        $schedule = new Schedule();
-        $other = "{$this->id}-b";
-        $this->engine($schedule, $listener)->register([$this->id => Tasks::make($this->id), $other => Tasks::make($other)]);
-        [$first, $second] = $schedule->events();
-        self::assertTrue($first->filtersPass(new DateTimeZone('UTC')));
-        self::assertTrue($second->filtersPass(new DateTimeZone('UTC')));
-
-        $this->invokeAll($first->beforeCallbacks());
-        $this->invokeAll($second->beforeCallbacks());
-        $this->invokeAll($first->afterCallbacks());
-        $this->invokeAll($second->errorCallbacks());
-        foreach ($schedule->errorCallbacks() as $callback) {
-            $callback($second);
-        }
-
-        self::assertSame(["started:{$this->id}", "started:{$other}", "finished:{$this->id}", "failed:{$other}"], $listener->calls);
-        [$firstStart, $secondStart, $firstEnd, $secondEnd] = $listener->runIds;
-        self::assertSame($firstStart, $firstEnd);
-        self::assertSame($secondStart, $secondEnd);
-        self::assertNotSame($firstStart, $secondStart);
-    }
-
-    private function register(TaskDefinition $task, CollectingListener $listener): Event
+    private function register(TaskDefinition $task): Event
     {
         $schedule = new Schedule();
-        $this->engine($schedule, $listener)->register([$task->id->value => $task]);
+        $this->engine($schedule)->register([$task->id->value => $task]);
 
         return $schedule->events()[0];
     }
 
-    private function engine(Schedule $schedule, CollectingListener $listener): CrunzEngine
+    private function engine(Schedule $schedule): CrunzEngine
     {
-        return new CrunzEngine($schedule, $this->mutex, $listener, self::CONSOLE);
+        return new CrunzEngine($schedule, $this->mutex, self::CONSOLE, new CollectingLogger());
     }
 
     /** @param array<Closure> $callbacks */

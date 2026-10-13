@@ -8,7 +8,6 @@ use LogicException;
 use Scheduling\Exception\InvalidTaskException;
 use Scheduling\Task\AdapterOptions;
 use Scheduling\Task\Command;
-use Scheduling\Task\Condition\ConditionInterface;
 use Scheduling\Task\CronExpression;
 use Scheduling\Task\LockPolicy;
 use Scheduling\Task\TaskDefinition;
@@ -16,8 +15,7 @@ use Scheduling\Task\TaskId;
 
 final class Tasks
 {
-    /** @param list<ConditionInterface> $conditions */
-    public static function make(string $id = 'report', array $conditions = [], bool $enabled = true, string $timezone = 'UTC'): TaskDefinition
+    public static function make(string $id = 'report', bool $enabled = true, string $timezone = 'UTC'): TaskDefinition
     {
         try {
             return new TaskDefinition(
@@ -28,7 +26,6 @@ final class Tasks
                 new LockPolicy(600),
                 $enabled,
                 new AdapterOptions(['laravel' => ['output_file' => '/tmp/x.log']]),
-                $conditions,
             );
         } catch (InvalidTaskException|DateInvalidTimeZoneException $e) {
             throw new LogicException('Invalid fixture', previous: $e);

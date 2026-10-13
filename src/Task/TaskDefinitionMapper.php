@@ -5,37 +5,30 @@ namespace Scheduling\Task;
 use DateInvalidTimeZoneException;
 use DateTimeZone;
 use Scheduling\Exception\InvalidTaskException;
-use Scheduling\Task\Condition\Environments;
-use Scheduling\Task\Condition\TimeWindow;
 
 /**
- * Converts between a task definition and its data form, the array shape shared by a YAML entry and a database row.
- * Keys: schedule, command, arguments, options, timezone, max_runtime, lock_margin, enabled, between,
- * environments, adapters. An unknown key is an error. `schedule`, `command` and `max_runtime` are required.
+ * Builds a task definition from its data form, the array shape of a YAML entry.
+ * Keys: schedule, command, arguments, options, timezone, max_runtime, lock_margin, enabled, adapters.
+ * An unknown key is an error. `schedule`, `command` and `max_runtime` are required.
  */
 final readonly class TaskDefinitionMapper
 {
     private const array KEYS = [
         'schedule', 'command', 'arguments', 'options', 'timezone', 'max_runtime',
-        'lock_margin', 'enabled', 'between', 'environments', 'adapters',
+        'lock_margin', 'enabled', 'adapters',
     ];
 
     private const float DEFAULT_MARGIN = 1.5;
 
     /**
-     * @param DateTimeZone $defaultTimezone used when a row has no `timezone`, and omitted from stored rows when equal
-     * @param string       $environment     the current environment name, checked by the `environments` condition
+     * @param DateTimeZone $defaultTimezone used when a row has no `timezone`
      */
-    public function __construct(
-        private DateTimeZone $defaultTimezone,
-        private string $environment,
-    ) {}
+    public function __construct(private DateTimeZone $defaultTimezone) {}
 
     /**
-     * Builds a validated task from a data row. `between` becomes a TimeWindow of two "HH:MM" times,
-     * `environments` an Environments condition; defaults: lock_margin 1.5, enabled true.
+     * Builds a validated task from a data row; defaults: lock_margin 1.5, enabled true.
      *
-     * @param string                  $id  the task id, taken from the YAML key or the table column, not from the row
+     * @param string                  $id  the task id, taken from the YAML key, not from the row
      * @param array<array-key, mixed> $row
      *
      * @throws InvalidTaskException when the row has an unknown key, a missing required key or a value of the wrong type or range
@@ -45,22 +38,6 @@ final readonly class TaskDefinitionMapper
         $unknown = array_diff(array_map(strval(...), array_keys($row)), self::KEYS);
         if ([] !== $unknown) {
             throw new InvalidTaskException('Unknown key: '.implode(', ', $unknown));
-        }
-
-        $conditions = [];
-        if (array_key_exists('between', $row)) {
-            $between = $this->stringList($row['between'], 'between');
-            if (2 !== count($between)) {
-                throw new InvalidTaskException('between must hold exactly two times');
-            }
-            $conditions[] = new TimeWindow($between[0], $between[1]);
-        }
-        if (array_key_exists('environments', $row)) {
-            $allowed = $this->stringList($row['environments'], 'environments');
-            if ([] === $allowed) {
-                throw new InvalidTaskException('environments must not be empty');
-            }
-            $conditions[] = new Environments($allowed, $this->environment);
         }
 
         return new TaskDefinition(
@@ -75,53 +52,7 @@ final readonly class TaskDefinitionMapper
             new LockPolicy($this->maxRuntime($row), $this->margin($row)),
             $this->enabled($row),
             new AdapterOptions(array_key_exists('adapters', $row) ? $this->adapters($row['adapters']) : []),
-            $conditions,
         );
-    }
-
-    /**
-     * Builds the data row of a task, leaving out values equal to the defaults (timezone, margin, enabled).
-     * Only TimeWindow and Environments conditions can be stored, one of each.
-     *
-     * @return array<string, mixed>
-     *
-     * @throws InvalidTaskException when a condition cannot be stored as data
-     */
-    public function toArray(TaskDefinition $task): array
-    {
-        $row = ['schedule' => $task->schedule->value, 'command' => $task->command->name];
-        if ([] !== $task->command->arguments) {
-            $row['arguments'] = $task->command->arguments;
-        }
-        if ([] !== $task->command->options) {
-            $row['options'] = $task->command->options;
-        }
-        if ($task->timezone->getName() !== $this->defaultTimezone->getName()) {
-            $row['timezone'] = $task->timezone->getName();
-        }
-        $row['max_runtime'] = $task->lock->maxRuntimeSeconds;
-        if (self::DEFAULT_MARGIN !== $task->lock->margin) {
-            $row['lock_margin'] = $task->lock->margin;
-        }
-        if (!$task->enabled) {
-            $row['enabled'] = false;
-        }
-        foreach ($task->conditions as $condition) {
-            [$key, $value] = match (true) {
-                $condition instanceof TimeWindow => ['between', [$condition->from, $condition->to]],
-                $condition instanceof Environments => ['environments', $condition->allowed],
-                default => throw new InvalidTaskException('Condition '.$condition::class.' cannot be stored as data'),
-            };
-            if (array_key_exists($key, $row)) {
-                throw new InvalidTaskException("Only one {$key} condition can be stored as data");
-            }
-            $row[$key] = $value;
-        }
-        if ([] !== $task->options->byAdapter) {
-            $row['adapters'] = $task->options->byAdapter;
-        }
-
-        return $row;
     }
 
     /**

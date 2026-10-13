@@ -3,8 +3,7 @@
 namespace Scheduling\Task;
 
 /**
- * Where task definitions come from: a YAML file, a database table, or several combined
- * (CompositeTaskSource). Read on every tick, so a change is live at the next one.
+ * Where task definitions come from: the YAML file. Read on every tick, so a change is live at the next one.
  */
 interface TaskSourceInterface
 {

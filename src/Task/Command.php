@@ -8,7 +8,7 @@ use Scheduling\Exception\InvalidTaskException;
  * What a task runs: a console command name with its arguments and options, never a shell string.
  * The name and the option names end up on a command line unquoted, so they are held to the characters a console
  * command or option name is made of; a name carrying shell syntax is refused when the command is built, whichever
- * source (YAML, database, code) it came from. Arguments and option values are free text: every engine quotes them.
+ * source (YAML, code) it came from. Arguments and option values are free text: every engine quotes them.
  */
 final class Command
 {

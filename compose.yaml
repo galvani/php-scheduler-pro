@@ -37,23 +37,6 @@ services:
       <<: *runtime
       APP_KEY: base64:c2NoZWR1bGVyLWRlbW8ta2V5LW5vdC1hLXNlY3JldCE=
       CACHE_STORE: file
-      SCHEDULING_HOST: demo
-    depends_on:
-      redis:
-        condition: service_healthy
-
-  demo:
-    build: .
-    image: php-scheduler-pro
-    user: *user
-    command: ["sh", "-c", "composer install --working-dir=demo/symfony --no-interaction --no-scripts && demo/symfony/prove.sh"]
-    volumes:
-      - .:/app
-      - demo-vendor:/app/demo/symfony/vendor
-      - demo-var:/app/demo/symfony/var
-    environment:
-      <<: *runtime
-      REDIS_URL: redis://redis:6379
     depends_on:
       redis:
         condition: service_healthy
@@ -84,21 +67,6 @@ services:
       redis:
         condition: service_healthy
 
-  install-symfony:
-    build: .
-    image: php-scheduler-pro
-    user: *user
-    command: ["docker/install-test.sh", "symfony"]
-    volumes:
-      - .:/app:ro
-    environment:
-      <<: *runtime
-    depends_on:
-      redis:
-        condition: service_healthy
-
 volumes:
   vendor:
   demo-laravel-vendor:
-  demo-vendor:
-  demo-var:

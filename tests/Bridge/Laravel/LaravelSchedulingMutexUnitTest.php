@@ -14,11 +14,9 @@ use Scheduling\Exception\LockUnavailableException;
 use Scheduling\Lock\LockInterface;
 use Scheduling\Lock\LockKey;
 use Scheduling\Lock\MutexInterface;
-use Scheduling\Run\RunListenerInterface;
-use Scheduling\Run\SkipReason;
 use Scheduling\Tests\Task\Tasks;
 
-/** Isolates LaravelSchedulingMutex: our mutex, the listener and the logger are mocks. */
+/** Isolates LaravelSchedulingMutex: our mutex and the logger are mocks. */
 final class LaravelSchedulingMutexUnitTest extends TestCase
 {
     private const string OWN_NAME = 'scheduler:task:report';
@@ -31,21 +29,16 @@ final class LaravelSchedulingMutexUnitTest extends TestCase
         $time = $this->minute();
         $mutex = $this->createMock(MutexInterface::class);
         $mutex->expects($this->once())->method('acquire')->with(LockKey::forTaskAt($task->id, $time), 3600)->willReturn($this->createStub(LockInterface::class));
-        $listener = $this->createMock(RunListenerInterface::class);
-        $listener->expects($this->never())->method($this->anything());
 
-        self::assertTrue($this->subject($mutex, $listener)->create($this->event(self::OWN_NAME), $time));
+        self::assertTrue($this->subject($mutex)->create($this->event(self::OWN_NAME), $time));
     }
 
-    public function testOwnTaskRefusedByTheClaimIsRecordedAsRanOnAnotherServer(): void
+    public function testOwnTaskRefusedByTheClaimIsSkipped(): void
     {
-        $task = Tasks::make('report');
         $mutex = $this->createMock(MutexInterface::class);
         $mutex->expects($this->once())->method('acquire')->willReturn(null);
-        $listener = $this->createMock(RunListenerInterface::class);
-        $listener->expects($this->once())->method('skipped')->with($task->id, $this->isInstanceOf(DateTimeImmutable::class), SkipReason::RanOnAnotherServer);
 
-        self::assertFalse($this->subject($mutex, $listener)->create($this->event(self::OWN_NAME), $this->minute()));
+        self::assertFalse($this->subject($mutex)->create($this->event(self::OWN_NAME), $this->minute()));
     }
 
     public function testAppTaskClaimsItsExternalMinuteKeyForAnHour(): void
@@ -57,28 +50,26 @@ final class LaravelSchedulingMutexUnitTest extends TestCase
         self::assertTrue($this->subject($mutex, withTask: false)->create($this->event(self::APP_NAME), $time));
     }
 
-    public function testAppTaskRefusedByTheClaimRecordsNothing(): void
+    public function testAppTaskRefusedByTheClaimLogsNothing(): void
     {
         $mutex = $this->createStub(MutexInterface::class);
-        $listener = $this->createMock(RunListenerInterface::class);
-        $listener->expects($this->never())->method($this->anything());
         $logger = $this->createMock(LoggerInterface::class);
         $logger->expects($this->never())->method($this->anything());
 
-        self::assertFalse($this->subject($mutex, $listener, $logger, false)->create($this->event(self::APP_NAME), $this->minute()));
+        self::assertFalse($this->subject($mutex, $logger, false)->create($this->event(self::APP_NAME), $this->minute()));
     }
 
-    public function testOwnTaskWithUnavailableStorageRecordsALockUnavailableSkip(): void
+    public function testOwnTaskWithUnavailableStorageLogsAWarningNamingTheTask(): void
     {
-        $task = Tasks::make('report');
+        $failure = new LockUnavailableException('Redis is down');
         $mutex = $this->createMock(MutexInterface::class);
-        $mutex->expects($this->once())->method('acquire')->willThrowException(new LockUnavailableException('Redis is down'));
-        $listener = $this->createMock(RunListenerInterface::class);
-        $listener->expects($this->once())->method('skipped')->with($task->id, $this->isInstanceOf(DateTimeImmutable::class), SkipReason::LockUnavailable);
+        $mutex->expects($this->once())->method('acquire')->willThrowException($failure);
         $logger = $this->createMock(LoggerInterface::class);
-        $logger->expects($this->never())->method('warning');
+        $logger->expects($this->once())
+            ->method('warning')
+            ->with('Lock storage unreachable; the run is skipped', ['task_id' => 'report', 'mutex' => self::OWN_NAME, 'exception' => $failure]);
 
-        self::assertFalse($this->subject($mutex, $listener, $logger)->create($this->event(self::OWN_NAME), $this->minute()));
+        self::assertFalse($this->subject($mutex, $logger)->create($this->event(self::OWN_NAME), $this->minute()));
     }
 
     public function testAppTaskWithUnavailableStorageLogsAWarningNamingTheMutex(): void
@@ -86,14 +77,12 @@ final class LaravelSchedulingMutexUnitTest extends TestCase
         $failure = new LockUnavailableException('Redis is down');
         $mutex = $this->createMock(MutexInterface::class);
         $mutex->expects($this->once())->method('acquire')->willThrowException($failure);
-        $listener = $this->createMock(RunListenerInterface::class);
-        $listener->expects($this->never())->method($this->anything());
         $logger = $this->createMock(LoggerInterface::class);
         $logger->expects($this->once())
             ->method('warning')
             ->with('Lock storage unreachable; the run is skipped', ['mutex' => self::APP_NAME, 'exception' => $failure]);
 
-        self::assertFalse($this->subject($mutex, $listener, $logger, false)->create($this->event(self::APP_NAME), $this->minute()));
+        self::assertFalse($this->subject($mutex, $logger, false)->create($this->event(self::APP_NAME), $this->minute()));
     }
 
     public function testExistsAsksForTheTaskMinuteKeyOfAnOwnTask(): void
@@ -125,7 +114,6 @@ final class LaravelSchedulingMutexUnitTest extends TestCase
 
     private function subject(
         MutexInterface $mutex,
-        ?RunListenerInterface $listener = null,
         ?LoggerInterface $logger = null,
         bool $withTask = true,
     ): LaravelSchedulingMutex {
@@ -137,7 +125,6 @@ final class LaravelSchedulingMutexUnitTest extends TestCase
         return new LaravelSchedulingMutex(
             $mutex,
             $index,
-            $listener ?? $this->createStub(RunListenerInterface::class),
             $logger ?? $this->createStub(LoggerInterface::class),
         );
     }

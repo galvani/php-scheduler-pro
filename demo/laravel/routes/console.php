@@ -11,11 +11,11 @@ use Illuminate\Support\Facades\Schedule;
  */
 
 Artisan::command('app:hello {--from=}', function (): void {
-    file_put_contents(storage_path('logs/hello.log'), now()->toIso8601String().' '.config('scheduling.host').PHP_EOL, FILE_APPEND);
+    file_put_contents(storage_path('logs/hello.log'), now()->toIso8601String().' '.(getenv('DEMO_SERVER') ?: gethostname()).PHP_EOL, FILE_APPEND);
 })->purpose('Append a line to storage/logs/hello.log');
 
 Artisan::command('app:legacy-report', function (): void {
-    file_put_contents(storage_path('logs/legacy-report.log'), now()->toIso8601String().' '.config('scheduling.host').PHP_EOL, FILE_APPEND);
+    file_put_contents(storage_path('logs/legacy-report.log'), now()->toIso8601String().' '.(getenv('DEMO_SERVER') ?: gethostname()).PHP_EOL, FILE_APPEND);
 })->purpose('The application\'s own scheduled command');
 
 Schedule::command('app:legacy-report')

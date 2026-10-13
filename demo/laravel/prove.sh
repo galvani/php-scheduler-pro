@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Shows the package in a Laravel 13 app: two servers run the schedule in the same minute against one Redis.
+# DEMO_SERVER names the simulated server in the lines the two commands write.
 set -euo pipefail
 cd "$(dirname "$0")"
 export REDIS_HOST="${REDIS_HOST:-127.0.0.1}"
@@ -28,24 +29,15 @@ if ((seconds > 45)); then
 fi
 
 echo "== schedule:run on server-a"
-SCHEDULING_HOST=server-a php artisan schedule:run
+DEMO_SERVER=server-a php artisan schedule:run
 echo "== schedule:run on server-b, same minute"
-SCHEDULING_HOST=server-b php artisan schedule:run
+DEMO_SERVER=server-b php artisan schedule:run
 
 echo "== storage/logs/hello.log (package task from scheduling.yaml)"
 cat storage/logs/hello.log
 echo "== storage/logs/legacy-report.log (the app's own entry in routes/console.php)"
 cat storage/logs/legacy-report.log
 
-echo "== Redis: run record of hello, oldest first"
-php -r '
-$redis = new Redis();
-$redis->connect(getenv("REDIS_HOST"), (int) getenv("REDIS_PORT"));
-foreach (array_reverse($redis->lRange("scheduler:runs:hello", 0, -1)) as $record) {
-    $run = json_decode($record, true, flags: JSON_THROW_ON_ERROR);
-    printf("%-9s %-8s %s\n", $run["state"], $run["host"], $run["detail"] ?? "");
-}
-'
 echo "== Redis: the app entry claimed its minute under our mutex"
 php -r '
 $redis = new Redis();
@@ -55,5 +47,7 @@ foreach ($redis->keys("scheduler:external:*") as $key) {
 }
 '
 
-echo "== scheduling:export (the app's own entries as YAML for scheduling.yaml)"
-php artisan scheduling:export
+test "$(wc -l < storage/logs/hello.log)" -eq 1
+grep -q ' server-a$' storage/logs/hello.log
+test "$(wc -l < storage/logs/legacy-report.log)" -eq 1
+echo "== OK: each task ran once, on server-a; server-b skipped both"

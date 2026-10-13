@@ -2,14 +2,10 @@
 
 namespace Scheduling\Tests\Task;
 
-use DateTimeImmutable;
 use DateTimeZone;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Scheduling\Exception\InvalidTaskException;
-use Scheduling\Task\Condition\ConditionInterface;
-use Scheduling\Task\Condition\Environments;
-use Scheduling\Task\Condition\TimeWindow;
 use Scheduling\Task\TaskDefinitionMapper;
 
 final class TaskDefinitionMapperTest extends TestCase
@@ -31,7 +27,6 @@ final class TaskDefinitionMapperTest extends TestCase
         self::assertSame(1.5, $task->lock->margin);
         self::assertTrue($task->enabled);
         self::assertSame([], $task->options->byAdapter);
-        self::assertSame([], $task->conditions);
     }
 
     /** @throws InvalidTaskException */
@@ -46,8 +41,6 @@ final class TaskDefinitionMapperTest extends TestCase
             'max_runtime' => 600,
             'lock_margin' => 2,
             'enabled' => false,
-            'between' => ['22:00', '06:00'],
-            'environments' => ['production'],
             'adapters' => ['laravel' => ['output_file' => '/tmp/x.log'], 'crunz' => []],
         ]);
 
@@ -58,12 +51,6 @@ final class TaskDefinitionMapperTest extends TestCase
         self::assertFalse($task->enabled);
         self::assertSame(['output_file' => '/tmp/x.log'], $task->options->for('laravel'));
         self::assertSame([], $task->options->for('crunz'));
-        self::assertCount(2, $task->conditions);
-        self::assertInstanceOf(TimeWindow::class, $task->conditions[0]);
-        self::assertSame('22:00', $task->conditions[0]->from);
-        self::assertInstanceOf(Environments::class, $task->conditions[1]);
-        self::assertSame(['production'], $task->conditions[1]->allowed);
-        self::assertTrue($task->conditions[1]->isSatisfied(new DateTimeImmutable()));
     }
 
     /**
@@ -111,11 +98,6 @@ final class TaskDefinitionMapperTest extends TestCase
         yield 'options holding an int' => [[...self::MINIMAL, 'options' => ['retries' => 3]], 'options.retries'];
         yield 'options holding a list of ints' => [[...self::MINIMAL, 'options' => ['ids' => [1]]], 'options.ids'];
         yield 'options with a numeric name' => [[...self::MINIMAL, 'options' => ['a']], 'options'];
-        yield 'between not a list' => [[...self::MINIMAL, 'between' => '22:00'], 'between'];
-        yield 'between of one' => [[...self::MINIMAL, 'between' => ['22:00']], 'between'];
-        yield 'between invalid time' => [[...self::MINIMAL, 'between' => ['25:00', '06:00']], '25:00'];
-        yield 'environments not a list' => [[...self::MINIMAL, 'environments' => 'production'], 'environments'];
-        yield 'environments empty' => [[...self::MINIMAL, 'environments' => []], 'environments'];
         yield 'adapters not a map' => [[...self::MINIMAL, 'adapters' => ['laravel']], 'adapters'];
         yield 'adapter options not a map' => [[...self::MINIMAL, 'adapters' => ['laravel' => 'x']], 'adapters'];
         yield 'adapter options keyed by number' => [[...self::MINIMAL, 'adapters' => ['laravel' => ['x']]], 'adapters.laravel'];
@@ -129,74 +111,8 @@ final class TaskDefinitionMapperTest extends TestCase
         $this->mapper()->fromArray('Not Valid', self::MINIMAL);
     }
 
-    /** @throws InvalidTaskException */
-    public function testRoundTripYieldsAnEqualDefinition(): void
-    {
-        $original = $this->mapper()->fromArray('report', [
-            'schedule' => '*/5 * * * *',
-            'command' => 'reports:send',
-            'arguments' => ['weekly', 'daily'],
-            'options' => ['queue' => 'high', 'force' => true, 'tag' => ['a', 'b']],
-            'timezone' => 'America/New_York',
-            'max_runtime' => 90,
-            'lock_margin' => 2.25,
-            'enabled' => false,
-            'between' => ['22:00', '06:00'],
-            'environments' => ['production', 'staging'],
-            'adapters' => ['laravel' => ['output_file' => '/tmp/x.log', 'nested' => ['a' => 1]], 'crunz' => []],
-        ]);
-
-        $copy = $this->mapper()->fromArray('report', $this->mapper()->toArray($original));
-
-        self::assertEquals($original, $copy);
-    }
-
-    /** @throws InvalidTaskException */
-    public function testToArrayOmitsKeysAtTheirDefaults(): void
-    {
-        $task = $this->mapper()->fromArray('report', self::MINIMAL);
-
-        self::assertSame(self::MINIMAL, $this->mapper()->toArray($task));
-    }
-
-    /** @throws InvalidTaskException */
-    public function testToArrayKeepsATimezoneDifferingFromTheDefault(): void
-    {
-        $task = $this->mapper()->fromArray('report', [...self::MINIMAL, 'timezone' => 'UTC']);
-
-        self::assertSame('UTC', $this->mapper()->toArray($task)['timezone']);
-    }
-
-    /** @throws InvalidTaskException */
-    public function testToArrayRefusesACustomCondition(): void
-    {
-        $custom = new class implements ConditionInterface {
-            /**
-             * Whether the condition holds at the given moment.
-             *
-             * @param DateTimeImmutable $now in the task's time zone
-             */
-            public function isSatisfied(DateTimeImmutable $now): bool
-            {
-                return true;
-            }
-        };
-
-        $this->expectException(InvalidTaskException::class);
-
-        $this->mapper()->toArray(Tasks::make(conditions: [$custom]));
-    }
-
-    /** @throws InvalidTaskException */
-    public function testToArrayRefusesTwoConditionsOfOneKind(): void
-    {
-        $this->expectException(InvalidTaskException::class);
-
-        $this->mapper()->toArray(Tasks::make(conditions: [new TimeWindow('01:00', '02:00'), new TimeWindow('03:00', '04:00')]));
-    }
-
     private function mapper(): TaskDefinitionMapper
     {
-        return new TaskDefinitionMapper(new DateTimeZone('Europe/Prague'), 'production');
+        return new TaskDefinitionMapper(new DateTimeZone('Europe/Prague'));
     }
 }

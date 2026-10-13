@@ -2,7 +2,6 @@
 
 namespace Scheduling\Bridge\Laravel;
 
-use DateTimeImmutable;
 use Illuminate\Console\Scheduling\CacheAware;
 use Illuminate\Console\Scheduling\CacheEventMutex;
 use Illuminate\Console\Scheduling\Event;
@@ -12,15 +11,11 @@ use Scheduling\Exception\LockUnavailableException;
 use Scheduling\Lock\LockInterface;
 use Scheduling\Lock\LockKey;
 use Scheduling\Lock\MutexInterface;
-use Scheduling\Run\RunListenerInterface;
-use Scheduling\Run\SkipReason;
 
 /**
  * Laravel's overlap-lock slot (`withoutOverlapping()`), answered by our mutex for every task in the schedule.
  *
- * - A task of this package locks `scheduler:task:<id>` for its max_runtime × margin, and its skips are recorded:
- *   `exists()` answers true for a held lock and Laravel's `ScheduledTaskSkipped` is recorded by SkippedSubscriber;
- *   a `create()` that loses the race after `exists()` answered false dispatches no event, so it records the skip itself.
+ * - A task of this package locks `scheduler:task:<id>` for its max_runtime × margin.
  * - A task from the app's own schedule locks `scheduler:external:<Laravel's mutex name>` for the minutes the app
  *   gave `withoutOverlapping()`, so the app's existing tasks get the reliable lock without a change to its code.
  * - A task from the app's own schedule that runs in the background stays on Laravel's cache lock: Laravel
@@ -34,17 +29,15 @@ final class LaravelEventMutex implements EventMutex, CacheAware
     private array $held = [];
 
     /**
-     * @param MutexInterface       $mutex          locks the package's tasks and the app's foreground tasks
-     * @param TaskIndex            $index          tells the package's tasks from the app's own
-     * @param CacheEventMutex      $laravelDefault Laravel's cache lock, kept for the app's background tasks
-     * @param RunListenerInterface $listener       records the skips of the package's tasks
-     * @param LoggerInterface      $logger         warns about an app task skipped for unreachable lock storage
+     * @param MutexInterface  $mutex          locks the package's tasks and the app's foreground tasks
+     * @param TaskIndex       $index          tells the package's tasks from the app's own
+     * @param CacheEventMutex $laravelDefault Laravel's cache lock, kept for the app's background tasks
+     * @param LoggerInterface $logger         warns about a run skipped for unreachable lock storage
      */
     public function __construct(
         private readonly MutexInterface $mutex,
         private readonly TaskIndex $index,
         private readonly CacheEventMutex $laravelDefault,
-        private readonly RunListenerInterface $listener,
         private readonly LoggerInterface $logger,
     ) {}
 
@@ -62,19 +55,11 @@ final class LaravelEventMutex implements EventMutex, CacheAware
                 ? $this->mutex->acquire(LockKey::forTask($task->id), $task->lock->ttlSeconds)
                 : $this->mutex->acquire(self::externalKey($event), max(1, $event->expiresAt * 60));
         } catch (LockUnavailableException $e) {
-            if (null !== $task) {
-                $this->listener->skipped($task->id, new DateTimeImmutable(), SkipReason::LockUnavailable);
-            } else {
-                $this->logger->warning('Lock storage unreachable; the run is skipped', ['mutex' => $event->mutexName(), 'exception' => $e]);
-            }
+            $this->logger->warning('Lock storage unreachable; the run is skipped', [...(null !== $task ? ['task_id' => $task->id->value] : []), 'mutex' => $event->mutexName(), 'exception' => $e]);
 
             return false;
         }
         if (null === $lock) {
-            if (null !== $task) {
-                $this->listener->skipped($task->id, new DateTimeImmutable(), SkipReason::StillRunning);
-            }
-
             return false;
         }
         $this->held[$event->mutexName()] = $lock;

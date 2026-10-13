@@ -18,7 +18,7 @@ final class TaskId
     }
 
     /**
-     * @param string $value the id as written in YAML or stored in the database
+     * @param string $value the id as written in YAML
      *
      * @throws InvalidTaskException when it does not match the allowed pattern
      */

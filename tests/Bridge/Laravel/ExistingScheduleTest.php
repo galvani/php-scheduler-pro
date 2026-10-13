@@ -13,7 +13,7 @@ use Scheduling\Exception\LockUnavailableException;
 use Scheduling\Lock\LockInterface;
 use Scheduling\Lock\LockKey;
 use Scheduling\Lock\MutexInterface;
-use Scheduling\Tests\Run\CollectingLogger;
+use Scheduling\Tests\CollectingLogger;
 
 /** Tasks the app defines in its own Laravel schedule, not through this package, locked by our mutex. */
 final class ExistingScheduleTest extends LaravelTestCase

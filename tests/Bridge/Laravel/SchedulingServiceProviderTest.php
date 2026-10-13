@@ -23,10 +23,8 @@ use Scheduling\Exception\LockUnavailableException;
 use Scheduling\Lock\LockKey;
 use Scheduling\Lock\MutexInterface;
 use Scheduling\Lock\RedisMutex;
-use Scheduling\Run\RedisRunRepository;
-use Scheduling\Run\RunRepositoryInterface;
 use Scheduling\Task\TaskId;
-use Scheduling\Tests\Run\CollectingLogger;
+use Scheduling\Tests\CollectingLogger;
 use stdClass;
 
 final class SchedulingServiceProviderTest extends LaravelTestCase
@@ -46,39 +44,21 @@ final class SchedulingServiceProviderTest extends LaravelTestCase
     public function testConfigIsMergedUnderTheSchedulingKey(): void
     {
         self::assertSame('scheduler', config('scheduling.redis'));
-        self::assertIsString(config('scheduling.host'));
-        self::assertSame(
-            ['enabled' => false, 'connection' => null, 'table' => 'scheduler_tasks'],
-            config('scheduling.database'),
-        );
+        self::assertIsString(config('scheduling.tasks_file'));
     }
 
-    public function testTheHostIsTheRuntimeHostnameNotAValueFrozenIntoTheConfig(): void
-    {
-        $published = require __DIR__.'/../../../config/scheduling.php';
-
-        self::assertIsArray($published);
-        self::assertNull($published['host']);
-        self::assertSame(gethostname(), config('scheduling.host'));
-    }
-
-    public function testConfigAndMigrationArePublishable(): void
+    public function testConfigIsPublishable(): void
     {
         $config = ServiceProvider::pathsToPublish(SchedulingServiceProvider::class, 'scheduling-config');
-        $migrations = ServiceProvider::pathsToPublish(SchedulingServiceProvider::class, 'scheduling-migrations');
 
         self::assertSame([realpath(__DIR__.'/../../../config/scheduling.php')], array_map(realpath(...), array_keys($config)));
         self::assertSame([config_path('scheduling.php')], array_values($config));
-        self::assertCount(1, $migrations);
-        self::assertFileExists(array_key_first($migrations));
-        self::assertStringEndsWith('_create_scheduler_tasks_table.php', (string) array_key_first($migrations));
     }
 
     /** @throws BindingResolutionException */
     public function testCollaboratorsResolveToTheRedisImplementations(): void
     {
         self::assertInstanceOf(RedisMutex::class, $this->laravel()->make(MutexInterface::class));
-        self::assertInstanceOf(RedisRunRepository::class, $this->laravel()->make(RunRepositoryInterface::class));
         self::assertInstanceOf(LaravelEventMutex::class, $this->laravel()->make(EventMutex::class));
         self::assertInstanceOf(LaravelSchedulingMutex::class, $this->laravel()->make(SchedulingMutex::class));
     }

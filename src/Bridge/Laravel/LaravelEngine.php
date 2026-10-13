@@ -2,17 +2,11 @@
 
 namespace Scheduling\Bridge\Laravel;
 
-use DateTimeImmutable;
 use Illuminate\Console\Application;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\ProcessUtils;
-use Scheduling\Capability\Capability;
-use Scheduling\Capability\CapabilityReport;
-use Scheduling\Capability\Fulfilment;
 use Scheduling\Exception\InvalidTaskException;
 use Scheduling\Lock\LockKey;
-use Scheduling\Run\RunId;
-use Scheduling\Run\RunListenerInterface;
 use Scheduling\SchedulerEngineInterface;
 use Scheduling\Task\Command;
 use Scheduling\Task\TaskDefinition;
@@ -20,17 +14,13 @@ use Scheduling\Task\TaskProblem;
 
 /**
  * The Laravel bridge. Laravel keeps deciding what is due and runs each task as an artisan command; this class
- * registers every task with Laravel's own fluent API (cron, timezone, mutex name, withoutOverlapping, onOneServer,
- * when, hooks). Both lock slots are answered by our mutex (LaravelEventMutex, LaravelSchedulingMutex), and the
- * hooks feed the run record: before() reports the start and keeps the run id the listener returns, onSuccess() and
- * onFailure() report the end of that same run. Both hooks run in the foreground schedule:run process; background
- * runs are not supported.
+ * registers every task with Laravel's own fluent API (cron, timezone, mutex name, withoutOverlapping, onOneServer).
+ * Both lock slots are answered by our mutex (LaravelEventMutex, LaravelSchedulingMutex).
  */
 final class LaravelEngine implements SchedulerEngineInterface
 {
     public function __construct(
         private readonly Schedule $schedule,
-        private readonly RunListenerInterface $listener,
         private readonly TaskIndex $index,
     ) {}
 
@@ -42,21 +32,6 @@ final class LaravelEngine implements SchedulerEngineInterface
     public function name(): string
     {
         return 'laravel';
-    }
-
-    /**
-     * What the engine does itself, what this package adds on top, and what neither can do.
-     */
-    public function capabilities(): CapabilityReport
-    {
-        return new CapabilityReport([
-            Capability::OverlapLock->value => Fulfilment::Native,
-            Capability::OneServer->value => Fulfilment::Native,
-            Capability::Conditions->value => Fulfilment::Native,
-            Capability::RunRecord->value => Fulfilment::Polyfilled,
-            Capability::SubMinute->value => Fulfilment::Unavailable,
-            Capability::MissedRunCatchUp->value => Fulfilment::Unavailable,
-        ]);
     }
 
     /**
@@ -84,17 +59,9 @@ final class LaravelEngine implements SchedulerEngineInterface
         return $problems;
     }
 
-    /**
-     * Registers one task as a Laravel event. The run id lives in a variable shared by this event's hooks only.
-     * An end hook that fires without a start before it reports the end under a fresh run id, which the listener
-     * does not know and so never judges overran.
-     */
     private function registerOne(TaskDefinition $task, LaravelOptions $options): void
     {
-        $id = $task->id;
-        /** @var RunId|null $run */
-        $run = null;
-        $mutexName = LockKey::forTask($id)->value;
+        $mutexName = LockKey::forTask($task->id)->value;
         $this->index->add($mutexName, $task);
 
         $event = $this->schedule
@@ -103,19 +70,7 @@ final class LaravelEngine implements SchedulerEngineInterface
             ->timezone($task->timezone)
             ->createMutexNameUsing($mutexName)
             ->withoutOverlapping((int) ceil($task->lock->ttlSeconds / 60))
-            ->onOneServer()
-            ->when(fn (): bool => $task->conditionsHold())
-            ->before(function () use ($id, &$run): void {
-                $run = $this->listener->started($id, new DateTimeImmutable());
-            })
-            ->onSuccess(function () use ($id, &$run): void {
-                $this->listener->finished($id, $run ?? RunId::generate(), new DateTimeImmutable());
-                $run = null;
-            })
-            ->onFailure(function () use ($id, &$run): void {
-                $this->listener->failed($id, $run ?? RunId::generate(), new DateTimeImmutable(), null, null);
-                $run = null;
-            });
+            ->onOneServer();
 
         if (null !== $options->outputFile) {
             $event->appendOutputTo($options->outputFile);

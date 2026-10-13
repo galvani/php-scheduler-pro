@@ -1,6 +1,6 @@
 <?php declare(strict_types=1);
 
-namespace Scheduling\Tests\Run;
+namespace Scheduling\Tests;
 
 use Psr\Log\AbstractLogger;
 use Stringable;

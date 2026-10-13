@@ -169,6 +169,6 @@ final class YamlTaskSourceTest extends TestCase
 
     private function mapper(): TaskDefinitionMapper
     {
-        return new TaskDefinitionMapper(new DateTimeZone('UTC'), 'production');
+        return new TaskDefinitionMapper(new DateTimeZone('UTC'));
     }
 }

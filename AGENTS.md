@@ -25,7 +25,7 @@ own mutex. Design and every decision behind it: `docs/design.md`; how it is test
 pds/skeleton at the package root (`src/`, `tests/`, `config/`, `docs/`). Inside `src/`: the main
 interfaces and their default implementations at the root (`SchedulerInterface`, `Scheduler`); role
 folders for framework roles (`Exception/`, singular as Symfony names them); domain folders for our own
-concepts (`Task/`, `Task/Condition/`, `Lock/`, `Run/`, `Capability/`); third-party integrations under
+concepts (`Task/`, `Lock/`); third-party integrations under
 `Bridge/<Vendor>/`. No kind folders for our own concepts (`ValueObject/`, `Enum/`). Interfaces end in
 `Interface`, exceptions in `Exception`.
 
@@ -40,7 +40,7 @@ publishable `config/scheduling.php`, and package auto-discovery (`extra.laravel.
 Every exception extends `abstract SchedulerException extends \Exception`, so all are checked.
 Every function that can throw documents it with `@throws`, constructors and property hooks
 included. PHPStan enforces it (`exceptions.check` in `phpstan.neon`); a stale `@throws` fails too.
-Misconfiguration (a prefixed Redis connection, an invalid DSN or table name) throws the unchecked
+Misconfiguration (a prefixed Redis connection) throws the unchecked
 `InvalidArgumentException`: it is a programming error, not a runtime case.
 
 ## Code style
@@ -72,8 +72,7 @@ Misconfiguration (a prefixed Redis connection, an invalid DSN or table name) thr
 
 - With Docker: `docker compose run --rm tests` (composer install, then the suite against a bundled Redis);
   `docker compose run --rm tests composer phpstan` for any composer script; `install-laravel`,
-  `install-laravel-12`, `install-symfony` for the `composer require` install tests; `demo-laravel`, `demo` for
-  the demos. Every command and what it proves: `docs/testing.md`.
+  `install-laravel-12` for the `composer require` install tests; `demo-laravel` for the demo. Every command and what it proves: `docs/testing.md`.
 - `.githooks/pre-commit`: with Docker running, cs-check, PHPStan and the suite in the container; without Docker,
   cs-check and PHPStan on the host. A commit that fails is refused. `composer install` points git at it
   (`core.hooksPath`). Never bypass the hook.

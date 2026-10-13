@@ -1,8 +1,0 @@
-parameters:
-    default_host: demo
-
-scheduling:
-    tasks_file: '%kernel.project_dir%/config/scheduling.yaml'
-    console_binary: 'php %kernel.project_dir%/bin/console'
-    host: '%env(default:default_host:SCHEDULING_HOST)%'
-    redis: '%env(REDIS_URL)%'

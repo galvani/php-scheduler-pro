@@ -6,18 +6,11 @@ use DateTimeImmutable;
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Container\BindingResolutionException;
-use JsonException;
 use Psr\Log\LoggerInterface;
 use RedisException;
-use Scheduling\Exception\InvalidTaskException;
-use Scheduling\Exception\StorageException;
-use Scheduling\Run\RedisRunRepository;
-use Scheduling\Run\RunState;
-use Scheduling\Run\SkipReason;
-use Scheduling\Task\TaskId;
 use Scheduling\Task\TaskSet;
 use Scheduling\Task\TaskSourceInterface;
-use Scheduling\Tests\Run\CollectingLogger;
+use Scheduling\Tests\CollectingLogger;
 
 final class ScheduleRunTest extends LaravelTestCase
 {
@@ -63,12 +56,9 @@ final class ScheduleRunTest extends LaravelTestCase
 
     /**
      * @throws BindingResolutionException
-     * @throws InvalidTaskException
-     * @throws JsonException
      * @throws RedisException
-     * @throws StorageException
      */
-    public function testDueCommandRunsHoldsItsLocksAndIsRecorded(): void
+    public function testDueCommandRunsHoldsItsLocksAndReleasesTheOverlapLock(): void
     {
         $id = $this->newTaskId();
         $this->writeDueTask($id, 'options: {text: hello, lock-key: "scheduler:task:'.$id.'"}');
@@ -79,17 +69,9 @@ final class ScheduleRunTest extends LaravelTestCase
         self::assertSame("hello locked=1\n", file_get_contents($this->markerFile($id)));
         self::assertSame(0, $this->redis->exists("scheduler:task:{$id}"));
         self::assertGreaterThan(0, $this->redis->ttl("scheduler:task:{$id}:202603041430"));
-        self::assertSame([RunState::Finished->value, RunState::Started->value], $this->recordedStates($id));
-        self::assertNotNull($this->runs()->lastOf(new TaskId($id), RunState::Started));
-        self::assertNotNull($this->runs()->lastOf(new TaskId($id), RunState::Finished));
     }
 
-    /**
-     * @throws BindingResolutionException
-     * @throws InvalidTaskException
-     * @throws RedisException
-     * @throws StorageException
-     */
+    /** @throws BindingResolutionException */
     public function testSecondRunInTheSameMinuteDoesNotRunItAgain(): void
     {
         $id = $this->newTaskId();
@@ -101,15 +83,11 @@ final class ScheduleRunTest extends LaravelTestCase
         $this->runSchedule();
 
         self::assertSame("ran\n", file_get_contents($this->markerFile($id)));
-        $skipped = $this->runs()->lastOf(new TaskId($id), RunState::Skipped);
-        self::assertNotNull($skipped);
-        self::assertSame(SkipReason::RanOnAnotherServer->value, $skipped->detail);
     }
 
     /**
      * @throws BindingResolutionException
-     * @throws InvalidTaskException
-     * @throws StorageException
+     * @throws RedisException
      */
     public function testHeldOverlapLockSkipsTheRun(): void
     {
@@ -122,36 +100,9 @@ final class ScheduleRunTest extends LaravelTestCase
 
         self::assertFileDoesNotExist($this->markerFile($id));
         self::assertSame('another-process', $this->redis->get("scheduler:task:{$id}"));
-        $skipped = $this->runs()->lastOf(new TaskId($id), RunState::Skipped);
-        self::assertNotNull($skipped);
-        self::assertSame(SkipReason::StillRunning->value, $skipped->detail);
     }
 
-    /**
-     * @throws BindingResolutionException
-     * @throws InvalidTaskException
-     * @throws StorageException
-     */
-    public function testTaskOutsideItsEnvironmentIsSkippedAndRecorded(): void
-    {
-        $id = $this->newTaskId();
-        $this->writeDueTask($id, 'environments: [production]');
-        $this->travelTo(new DateTimeImmutable(self::DUE_MINUTE.' UTC'));
-
-        $this->runSchedule();
-
-        self::assertFileDoesNotExist($this->markerFile($id));
-        $skipped = $this->runs()->lastOf(new TaskId($id), RunState::Skipped);
-        self::assertNotNull($skipped);
-        self::assertSame(SkipReason::ConditionNotMet->value, $skipped->detail);
-        self::assertNull($this->runs()->lastOf(new TaskId($id), RunState::Started));
-    }
-
-    /**
-     * @throws BindingResolutionException
-     * @throws InvalidTaskException
-     * @throws StorageException
-     */
+    /** @throws BindingResolutionException */
     public function testARunReadsTheTasksOnce(): void
     {
         $id = $this->newTaskId();
@@ -174,7 +125,7 @@ final class ScheduleRunTest extends LaravelTestCase
         $this->runSchedule();
 
         self::assertSame(1, $source->loads);
-        self::assertNotNull($this->runs()->lastOf(new TaskId($id), RunState::Finished));
+        self::assertSame("ran\n", file_get_contents($this->markerFile($id)));
     }
 
     /** @throws BindingResolutionException */
@@ -217,29 +168,6 @@ final class ScheduleRunTest extends LaravelTestCase
                 timezone: UTC
                 {$extra}
             YAML);
-    }
-
-    private function runs(): RedisRunRepository
-    {
-        return new RedisRunRepository($this->redis);
-    }
-
-    /**
-     * @return list<string> newest first
-     *
-     * @throws JsonException
-     * @throws RedisException
-     */
-    private function recordedStates(string $id): array
-    {
-        $states = [];
-        $records = $this->redis->lRange("scheduler:runs:{$id}", 0, -1);
-        foreach (is_array($records) ? $records : [] as $json) {
-            $record = is_string($json) ? json_decode($json, true, flags: JSON_THROW_ON_ERROR) : null;
-            $states[] = is_array($record) && is_string($record['state'] ?? null) ? $record['state'] : '';
-        }
-
-        return $states;
     }
 
     private function timezoneOf(Event $event): string
