@@ -160,7 +160,8 @@ package's code for one engine (`src/Bridge/…`), and `adapters:` in a task hold
 Every engine takes the same lock keys, so servers on different engines exclude each other. The overlap lock
 lives differently on each: on Laravel it lasts `max_runtime × lock_margin` and cannot be extended while the task
 runs; on crunz it lasts two minutes and crunz extends it for as long as the task runs, so `lock_margin` has no
-effect there.
+effect there. The next engine worth adding is Symfony's Scheduler; see
+[docs/design.md](docs/design.md#the-next-engine-symfony-scheduler).
 
 ## Demo
 

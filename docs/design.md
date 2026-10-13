@@ -189,6 +189,23 @@ An application that already schedules commands in `routes/console.php` keeps the
    claim the same name per minute. Background tasks stay on Laravel's lock (see the README's limitations), in the
    store `cache.schedule_store` names.
 
+## The next engine: Symfony Scheduler
+
+**In short:** of the three engines we looked at, Symfony's Scheduler component is the best, and adding it is one
+more bridge, in a Laravel app too.
+
+- **A worker boots once** and serves every run from memory, like FrankenPHP's worker mode, instead of booting
+  the framework every minute and again per task. It can still run from crontab when that is preferred.
+- **It scales out:** with Messenger, runs go to a transport and any number of workers handle them. crunz
+  runs everything on the machine that ticked.
+- **It has what our two engines lack:** runs every second, and catch-up of runs missed while the servers were
+  down.
+- **It costs little:** one `SchedulerEngineInterface` implementation; our mutex already speaks Symfony Lock;
+  in a Laravel 13 app with this package it adds seven packages.
+
+[Symfony Scheduler in detail](https://github.com/galvani/php-scheduler-pro/blob/full/docs/design.md#symfony-scheduler-in-detail),
+on the `full` branch: how the three engines run, worker or crontab, and what the bridge needs.
+
 ## Known trade-offs
 
 What the design accepts, and what each would take to change.
@@ -247,4 +264,4 @@ The `full` branch carries these extensions; they are built on the same interface
 - Conditions on a task: time windows and environments.
 - The Symfony bundle and a crunz-on-Symfony demo app.
 - `scheduling:export`, which prints an app's existing Laravel schedule as YAML.
-- The Symfony Scheduler analysis as the next engine.
+- The detailed Symfony Scheduler analysis: how the three engines run, worker or crontab, and the bridge.
