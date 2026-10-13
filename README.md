@@ -5,6 +5,9 @@ stored in a database. They run on **Laravel's scheduler** or on **crunz**, under
 package's own**, with a **run record** of every start, finish, failure and skip. Swapping the engine changes no
 task and no application code.
 
+> **This is the `full` branch**: the assignment ([`ASSIGNMENT.md`](ASSIGNMENT.md)) and everything built on top of
+> it. The required minimum, the interfaces and the two engines and nothing more, is on the `main` branch.
+
 The interfaces, with every parameter and the reason for its shape, are in
 [docs/design.md](docs/design.md#the-interfaces).
 
