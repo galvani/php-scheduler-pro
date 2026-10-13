@@ -130,6 +130,26 @@ final class RedisMutexTest extends TestCase
     }
 
     /** @throws LockUnavailableException */
+    public function testAnErrorReplyFromTheLockScriptIsLockUnavailable(): void
+    {
+        $lock = new RedisMutex($this->redis)->acquire($this->key, 30);
+        self::assertNotNull($lock);
+        $this->redis->del($this->key->value);
+        $this->redis->rPush($this->key->value, 'not a lock');
+
+        try {
+            $lock->extend(30);
+            self::fail('extend() must not read a WRONGTYPE reply as a lost lock');
+        } catch (LockUnavailableException $e) {
+            self::assertStringContainsString('WRONGTYPE', $e->getMessage());
+        }
+
+        $this->expectException(LockUnavailableException::class);
+
+        $lock->release();
+    }
+
+    /** @throws LockUnavailableException */
     public function testTheExpiryIsInTheFuture(): void
     {
         $lock = new RedisMutex($this->redis)->acquire($this->key, 30);

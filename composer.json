@@ -5,6 +5,7 @@
     "license": "proprietary",
     "require": {
         "php": ">=8.5",
+        "ext-redis": "*",
         "dragonmantank/cron-expression": "^3.4",
         "psr/log": "^3.0",
         "symfony/yaml": "^7.4 || ^8.0"
@@ -23,7 +24,6 @@
         "phpstan/phpstan-phpunit": "^2.0"
     },
     "suggest": {
-        "ext-redis": "Needed by Scheduling\\Lock\\RedisMutex",
         "ext-pdo": "Needed by Scheduling\\Task\\PdoTaskRepository",
         "illuminate/console": "Needed by Scheduling\\Bridge\\Laravel",
         "crunzphp/crunz": "Needed by Scheduling\\Bridge\\Crunz",

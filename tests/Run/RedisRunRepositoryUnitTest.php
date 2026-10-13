@@ -111,6 +111,44 @@ final class RedisRunRepositoryUnitTest extends TestCase
         new RedisRunRepository($redis)->append($this->record(RunState::Started));
     }
 
+    /** @throws InvalidTaskException */
+    public function testAppendRejectsAnErrorReplyInsideTheTransaction(): void
+    {
+        $redis = $this->createMock(Redis::class);
+        $redis->expects($this->once())->method('clearLastError')->willReturn(true);
+        $redis->method('multi')->willReturnSelf();
+        $redis->method('lPush')->willReturnSelf();
+        $redis->method('lTrim')->willReturnSelf();
+        $redis->method('hSet')->willReturnSelf();
+        $redis->expects($this->once())->method('exec')->willReturn([false, false, false]);
+        $redis->method('getLastError')->willReturn('WRONGTYPE Operation against a key holding the wrong kind of value');
+
+        try {
+            new RedisRunRepository($redis)->append($this->record(RunState::Started));
+            self::fail('StorageException expected');
+        } catch (StorageException $e) {
+            self::assertStringContainsString('report', $e->getMessage());
+            self::assertStringContainsString('WRONGTYPE', $e->getMessage());
+        }
+    }
+
+    /** @throws InvalidTaskException */
+    public function testLastOfRejectsAnErrorReply(): void
+    {
+        $redis = $this->createMock(Redis::class);
+        $redis->expects($this->once())->method('clearLastError')->willReturn(true);
+        $redis->expects($this->once())->method('hGet')->willReturn(false);
+        $redis->method('getLastError')->willReturn('WRONGTYPE Operation against a key holding the wrong kind of value');
+
+        try {
+            new RedisRunRepository($redis)->lastOf(new TaskId('report'), RunState::Started);
+            self::fail('StorageException expected');
+        } catch (StorageException $e) {
+            self::assertStringContainsString('report', $e->getMessage());
+            self::assertStringContainsString('WRONGTYPE', $e->getMessage());
+        }
+    }
+
     /**
      * @throws InvalidTaskException
      * @throws StorageException

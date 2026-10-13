@@ -10,6 +10,8 @@ use Scheduling\Exception\LockUnavailableException;
 /**
  * A lock held in Redis, created by RedisMutex. Release and extend run as Lua scripts that act only when the stored
  * value equals this lock's token, so a holder whose key expired cannot delete or prolong the next holder's lock.
+ * Trap: an error reply to a script (WRONGTYPE, a script error) comes back from phpredis as false, not as an
+ * exception; getLastError() is what tells it from a script result, so it is cleared before every call.
  */
 final class RedisLock implements LockInterface
 {
@@ -51,7 +53,7 @@ final class RedisLock implements LockInterface
      *
      * @return bool false when the lock was already lost (expired or taken by another holder)
      *
-     * @throws LockUnavailableException when Redis cannot be reached
+     * @throws LockUnavailableException when the storage cannot be reached or answers with an error
      */
     public function extend(int $ttlSeconds): bool
     {
@@ -68,7 +70,7 @@ final class RedisLock implements LockInterface
      *
      * Deletes the key only when the token matches; otherwise does nothing.
      *
-     * @throws LockUnavailableException when Redis cannot be reached
+     * @throws LockUnavailableException when the storage cannot be reached or answers with an error
      */
     public function release(): void
     {
@@ -76,7 +78,7 @@ final class RedisLock implements LockInterface
     }
 
     /**
-     * Runs a Lua script with one key.
+     * Runs a Lua script with one key; an error reply throws instead of coming back as a result.
      *
      * @param list<string|int> $arguments the key first, then the script's ARGV
      *
@@ -85,9 +87,16 @@ final class RedisLock implements LockInterface
     private function run(string $script, array $arguments): mixed
     {
         try {
-            return $this->redis->eval($script, $arguments, 1);
+            $this->redis->clearLastError();
+            $result = $this->redis->eval($script, $arguments, 1);
+            $error = $this->redis->getLastError();
         } catch (RedisException $e) {
             throw new LockUnavailableException("Redis unreachable for {$this->key->value}", previous: $e);
         }
+        if (null !== $error) {
+            throw new LockUnavailableException("Redis refused the lock script for {$this->key->value}: {$error}");
+        }
+
+        return $result;
     }
 }

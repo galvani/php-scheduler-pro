@@ -133,6 +133,28 @@ final class RedisRunRepositoryTest extends TestCase
     }
 
     /** @throws StorageException */
+    public function testAnErrorReplyWhileReadingIsAStorageException(): void
+    {
+        $this->redis->set("scheduler:runs:{$this->id->value}:last", 'not a hash');
+
+        $this->expectException(StorageException::class);
+        $this->expectExceptionMessage('WRONGTYPE');
+
+        new RedisRunRepository($this->redis)->lastOf($this->id, RunState::Started);
+    }
+
+    /** @throws StorageException */
+    public function testAnErrorReplyInsideTheTransactionIsAStorageException(): void
+    {
+        $this->redis->set("scheduler:runs:{$this->id->value}", 'not a list');
+
+        $this->expectException(StorageException::class);
+        $this->expectExceptionMessage('WRONGTYPE');
+
+        new RedisRunRepository($this->redis)->append(new RunRecord($this->id, RunState::Started, new DateTimeImmutable(), 'web-1'));
+    }
+
+    /** @throws StorageException */
     public function testAnUnreachableRedisIsAStorageException(): void
     {
         $repository = new RedisRunRepository(new Redis());

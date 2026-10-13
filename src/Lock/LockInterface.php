@@ -21,14 +21,14 @@ interface LockInterface
      *
      * @return bool false when the lock was already lost (expired or taken by another holder)
      *
-     * @throws LockUnavailableException when the storage cannot be reached
+     * @throws LockUnavailableException when the storage cannot be reached or answers with an error
      */
     public function extend(int $ttlSeconds): bool;
 
     /**
      * Releases only if this holder still owns the key; otherwise a no-op.
      *
-     * @throws LockUnavailableException when the storage cannot be reached
+     * @throws LockUnavailableException when the storage cannot be reached or answers with an error
      */
     public function release(): void;
 }

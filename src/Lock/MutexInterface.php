@@ -19,14 +19,15 @@ interface MutexInterface
      *
      * @return LockInterface|null null when another holder has the key
      *
-     * @throws LockUnavailableException when the storage cannot be reached; callers skip the run rather than run unlocked
+     * @throws LockUnavailableException when the storage cannot be reached or answers with an error; callers skip
+     *                                  the run rather than run unlocked
      */
     public function acquire(LockKey $key, int $ttlSeconds): ?LockInterface;
 
     /**
      * Whether any holder has the key now; used by engines that ask before they lock.
      *
-     * @throws LockUnavailableException when the storage cannot be reached
+     * @throws LockUnavailableException when the storage cannot be reached or answers with an error
      */
     public function isLocked(LockKey $key): bool;
 }

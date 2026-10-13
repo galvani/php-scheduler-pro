@@ -96,6 +96,34 @@ final class RedisLockUnitTest extends TestCase
         }
     }
 
+    /** @throws LockUnavailableException */
+    public function testExtendMapsAnErrorReplyToLockUnavailable(): void
+    {
+        $redis = $this->createMock(Redis::class);
+        $redis->expects($this->once())->method('clearLastError')->willReturn(true);
+        $redis->expects($this->once())->method('eval')->willReturn(false);
+        $redis->method('getLastError')->willReturn('WRONGTYPE Operation against a key holding the wrong kind of value');
+
+        $this->expectException(LockUnavailableException::class);
+        $this->expectExceptionMessage('WRONGTYPE');
+
+        $this->lock($redis, new DateTimeImmutable())->extend(30);
+    }
+
+    /** @throws LockUnavailableException */
+    public function testReleaseMapsAnErrorReplyToLockUnavailable(): void
+    {
+        $redis = $this->createMock(Redis::class);
+        $redis->expects($this->once())->method('clearLastError')->willReturn(true);
+        $redis->expects($this->once())->method('eval')->willReturn(false);
+        $redis->method('getLastError')->willReturn('WRONGTYPE Operation against a key holding the wrong kind of value');
+
+        $this->expectException(LockUnavailableException::class);
+        $this->expectExceptionMessage('WRONGTYPE');
+
+        $this->lock($redis, new DateTimeImmutable())->release();
+    }
+
     public function testExpiresAtReturnsTheGivenInstant(): void
     {
         $expiresAt = new DateTimeImmutable('2030-05-06 07:08:09');

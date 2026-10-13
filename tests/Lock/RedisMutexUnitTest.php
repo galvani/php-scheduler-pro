@@ -86,6 +86,34 @@ final class RedisMutexUnitTest extends TestCase
         self::assertFalse($mutex->isLocked(LockKey::forExternal('job')));
     }
 
+    /** @throws LockUnavailableException */
+    public function testAcquireMapsAnErrorReplyToLockUnavailable(): void
+    {
+        $redis = $this->createMock(Redis::class);
+        $redis->expects($this->once())->method('clearLastError')->willReturn(true);
+        $redis->expects($this->once())->method('set')->willReturn(false);
+        $redis->method('getLastError')->willReturn('ERR no upstream host');
+
+        $this->expectException(LockUnavailableException::class);
+        $this->expectExceptionMessage('ERR no upstream host');
+
+        new RedisMutex($redis)->acquire(LockKey::forExternal('job'), 90);
+    }
+
+    /** @throws LockUnavailableException */
+    public function testIsLockedMapsAnErrorReplyToLockUnavailable(): void
+    {
+        $redis = $this->createMock(Redis::class);
+        $redis->expects($this->once())->method('clearLastError')->willReturn(true);
+        $redis->expects($this->once())->method('exists')->willReturn(false);
+        $redis->method('getLastError')->willReturn('ERR no upstream host');
+
+        $this->expectException(LockUnavailableException::class);
+        $this->expectExceptionMessage('ERR no upstream host');
+
+        new RedisMutex($redis)->isLocked(LockKey::forExternal('job'));
+    }
+
     public function testIsLockedMapsRedisFailureToLockUnavailable(): void
     {
         $failure = new RedisException('gone away');

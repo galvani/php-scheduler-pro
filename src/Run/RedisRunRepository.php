@@ -13,6 +13,8 @@ use Scheduling\Task\TaskId;
 /**
  * RunRepositoryInterface on Redis. Per task it keeps `scheduler:runs:<id>`, a list of JSON records capped to the
  * newest N, and the hash `scheduler:runs:<id>:last` holding the latest record per state, which is not capped.
+ * Trap: phpredis reports an error reply (WRONGTYPE, any `ERR ...`) as false, or inside MULTI as false entries in the
+ * EXEC result, instead of throwing; getLastError() is cleared before each call and checked after it.
  */
 final readonly class RedisRunRepository implements RunRepositoryInterface
 {
@@ -31,6 +33,8 @@ final readonly class RedisRunRepository implements RunRepositoryInterface
      * Stores one record.
      *
      * Pushes the record on the history list, trims it to the cap and updates the per-state hash in one MULTI transaction.
+     *
+     * @throws StorageException when the storage cannot be written
      */
     public function append(RunRecord $record): void
     {
@@ -41,16 +45,21 @@ final readonly class RedisRunRepository implements RunRepositoryInterface
         }
         $history = "scheduler:runs:{$record->taskId->value}";
         try {
+            $this->redis->clearLastError();
             $result = $this->redis->multi()
                 ->lPush($history, $json)
                 ->lTrim($history, 0, $this->historyLength - 1)
                 ->hSet("{$history}:last", $record->state->value, $json)
                 ->exec();
+            $error = $this->redis->getLastError();
         } catch (RedisException $e) {
             throw new StorageException("Redis unreachable while recording a run of {$record->taskId->value}", previous: $e);
         }
         if (false === $result) {
             throw new StorageException("Recording a run of {$record->taskId->value} was not applied");
+        }
+        if (null !== $error) {
+            throw new StorageException("Redis refused to record a run of {$record->taskId->value}: {$error}");
         }
     }
 
@@ -59,13 +68,20 @@ final readonly class RedisRunRepository implements RunRepositoryInterface
      * Used to tell a run that ended after its max_runtime (RunState::Overran).
      *
      * Reads from the per-state hash, so it does not scan the history list.
+     *
+     * @throws StorageException when the storage cannot be read
      */
     public function lastOf(TaskId $id, RunState $state): ?RunRecord
     {
         try {
+            $this->redis->clearLastError();
             $raw = $this->redis->hGet("scheduler:runs:{$id->value}:last", $state->value);
+            $error = $this->redis->getLastError();
         } catch (RedisException $e) {
             throw new StorageException("Redis unreachable while reading a run of {$id->value}", previous: $e);
+        }
+        if (null !== $error) {
+            throw new StorageException("Redis refused to read a run of {$id->value}: {$error}");
         }
         if (false === $raw) {
             return null;

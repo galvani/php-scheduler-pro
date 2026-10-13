@@ -13,8 +13,9 @@ enum Capability: string
 {
     /**
      * A task never starts while its previous run still holds the lock `scheduler:task:<id>`.
-     * The lock lives max_runtime × margin seconds; our mutex is plugged into the engine's own lock
-     * slot (Laravel's EventMutex, crunz's preventOverlapping store).
+     * Our mutex is plugged into the engine's own lock slot: Laravel's EventMutex, where the lock lives
+     * max_runtime × margin seconds, and crunz's preventOverlapping store, where it lives two minutes and crunz
+     * extends it while the task runs.
      */
     case OverlapLock = 'overlap_lock';
 
