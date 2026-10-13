@@ -18,7 +18,8 @@ enum RunState: string
     case Skipped = 'skipped';
 
     /**
-     * The run ended, successfully or not, after its max_runtime. Its lock may have expired while it ran,
+     * The run ended, successfully or not, more than its max_runtime after its own start, even when another copy of
+     * the task started later. Its lock may have expired while it ran,
      * so a second copy could have started beside it. It is kept apart from failed, so a retry of failed
      * runs (designed, not built) can never start another copy beside one still going.
      */

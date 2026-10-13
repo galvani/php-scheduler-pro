@@ -6,6 +6,7 @@ use DateTimeImmutable;
 use JsonException;
 use Redis;
 use RedisException;
+use Scheduling\Exception\InvalidRunIdException;
 use Scheduling\Exception\InvalidTaskException;
 use Scheduling\Exception\StorageException;
 use Scheduling\Task\TaskId;
@@ -13,6 +14,8 @@ use Scheduling\Task\TaskId;
 /**
  * RunRepositoryInterface on Redis. Per task it keeps `scheduler:runs:<id>`, a list of JSON records capped to the
  * newest N, and the hash `scheduler:runs:<id>:last` holding the latest record per state, which is not capped.
+ * A record carries `run_id` only when it belongs to a run; a skip has none, and a record without the key reads back
+ * with a null run id.
  * Trap: phpredis reports an error reply (WRONGTYPE, any `ERR ...`) as false, or inside MULTI as false entries in the
  * EXEC result, instead of throwing; getLastError() is cleared before each call and checked after it.
  */
@@ -65,7 +68,7 @@ final readonly class RedisRunRepository implements RunRepositoryInterface
 
     /**
      * The newest record of a task in the given state, or null if there is none.
-     * Used to tell a run that ended after its max_runtime (RunState::Overran).
+     * This is how a reader of the run history learns, e.g., when a task last finished or last overran.
      *
      * Reads from the per-state hash, so it does not scan the history list.
      *
@@ -93,13 +96,18 @@ final readonly class RedisRunRepository implements RunRepositoryInterface
     /** @return array<string, string|null> */
     private function encode(RunRecord $record): array
     {
-        return [
+        $data = [
             'task_id' => $record->taskId->value,
             'state' => $record->state->value,
             'at' => $record->at->format(self::TIME_FORMAT),
             'host' => $record->host,
             'detail' => $record->detail,
         ];
+        if (null !== $record->runId) {
+            $data['run_id'] = $record->runId->value;
+        }
+
+        return $data;
     }
 
     /** @throws StorageException */
@@ -113,13 +121,14 @@ final readonly class RedisRunRepository implements RunRepositoryInterface
             $at = is_string($data['at'] ?? null) ? DateTimeImmutable::createFromFormat(self::TIME_FORMAT, $data['at']) : false;
             $state = is_string($data['state'] ?? null) ? RunState::tryFrom($data['state']) : null;
             $detail = $data['detail'] ?? null;
+            $runId = $data['run_id'] ?? null;
             if (!is_string($data['task_id'] ?? null) || !is_string($data['host'] ?? null) || false === $at || null === $state
-                || (null !== $detail && !is_string($detail))) {
+                || (null !== $detail && !is_string($detail)) || (null !== $runId && !is_string($runId))) {
                 throw new StorageException('Stored run record is malformed');
             }
 
-            return new RunRecord(new TaskId($data['task_id']), $state, $at, $data['host'], $detail);
-        } catch (JsonException|InvalidTaskException $e) {
+            return new RunRecord(new TaskId($data['task_id']), $state, $at, $data['host'], $detail, null !== $runId ? new RunId($runId) : null);
+        } catch (JsonException|InvalidTaskException|InvalidRunIdException $e) {
             throw new StorageException('Stored run record is malformed', previous: $e);
         }
     }

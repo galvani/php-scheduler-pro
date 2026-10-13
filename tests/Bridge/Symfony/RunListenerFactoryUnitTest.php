@@ -8,12 +8,14 @@ use Psr\Log\LoggerInterface;
 use Scheduling\Bridge\Symfony\RunListenerFactory;
 use Scheduling\Exception\InvalidTaskException;
 use Scheduling\Exception\StorageException;
+use Scheduling\Run\RunId;
 use Scheduling\Run\RunRecord;
 use Scheduling\Run\RunRepositoryInterface;
 use Scheduling\Run\RunState;
 use Scheduling\SchedulerInterface;
 use Scheduling\Task\TaskId;
 use Scheduling\Task\TaskSet;
+use Scheduling\Tests\Run\InMemoryRunRepository;
 use Scheduling\Tests\Task\Tasks;
 
 /** Isolates RunListenerFactory: the scheduler, repository and logger are mocks. */
@@ -26,7 +28,10 @@ final class RunListenerFactoryUnitTest extends TestCase
         $scheduler->method('tasks')->willReturn(new TaskSet(['report' => $task]));
         $at = new DateTimeImmutable('2026-03-04 14:30:00 UTC');
         $runs = $this->createMock(RunRepositoryInterface::class);
-        $runs->expects($this->once())->method('append')->with(new RunRecord($task->id, RunState::Started, $at, 'web-7'));
+        $runs->expects($this->once())->method('append')->with($this->callback(
+            static fn (RunRecord $record): bool => $record->taskId === $task->id && RunState::Started === $record->state
+                && $record->at === $at && 'web-7' === $record->host && null === $record->detail && $record->runId instanceof RunId,
+        ));
 
         RunListenerFactory::create($scheduler, $runs, 'web-7', $this->createStub(LoggerInterface::class))->started($task->id, $at);
     }
@@ -39,11 +44,15 @@ final class RunListenerFactoryUnitTest extends TestCase
         $scheduler->method('tasks')->willReturn(new TaskSet(['report' => $task]));
         $started = new DateTimeImmutable('2026-03-04 14:00:00 UTC');
         $ended = $started->modify('+2 hours');
-        $runs = $this->createMock(RunRepositoryInterface::class);
-        $runs->expects($this->once())->method('lastOf')->with($task->id, RunState::Started)->willReturn(new RunRecord($task->id, RunState::Started, $started, 'web-7'));
-        $runs->expects($this->once())->method('append')->with(new RunRecord($task->id, RunState::Overran, $ended, 'web-7'));
+        $runs = new InMemoryRunRepository();
+        $listener = RunListenerFactory::create($scheduler, $runs, 'web-7', $this->createStub(LoggerInterface::class));
 
-        RunListenerFactory::create($scheduler, $runs, 'web-7', $this->createStub(LoggerInterface::class))->finished(new TaskId('report'), $ended);
+        $run = $listener->started(new TaskId('report'), $started);
+        $listener->finished(new TaskId('report'), $run, $ended);
+
+        self::assertSame([RunState::Started, RunState::Overran], array_map(static fn (RunRecord $record) => $record->state, $runs->records));
+        self::assertSame($ended, $runs->records[1]->at);
+        self::assertSame('web-7', $runs->records[1]->host);
     }
 
     /** @throws InvalidTaskException */

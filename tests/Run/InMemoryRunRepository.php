@@ -22,7 +22,7 @@ final class InMemoryRunRepository implements RunRepositoryInterface
 
     /**
      * The newest record of a task in the given state, or null if there is none.
-     * Used to tell a run that ended after its max_runtime (RunState::Overran).
+     * This is how a reader of the run history learns, e.g., when a task last finished or last overran.
      */
     public function lastOf(TaskId $id, RunState $state): ?RunRecord
     {

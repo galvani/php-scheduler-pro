@@ -11,6 +11,7 @@ use RedisException;
 use Scheduling\Exception\InvalidTaskException;
 use Scheduling\Exception\StorageException;
 use Scheduling\Run\RedisRunRepository;
+use Scheduling\Run\RunId;
 use Scheduling\Run\RunRecord;
 use Scheduling\Run\RunState;
 use Scheduling\Task\TaskId;
@@ -169,6 +170,38 @@ final class RedisRunRepositoryUnitTest extends TestCase
         self::assertSame('web-1', $record->host);
         self::assertSame('still_running', $record->detail);
         self::assertSame('2026-03-04T14:30:00+00:00', $record->at->format('c'));
+        self::assertNull($record->runId);
+    }
+
+    /**
+     * @throws InvalidTaskException
+     * @throws JsonException
+     * @throws StorageException
+     */
+    public function testARecordOfARunCarriesItsRunIdThereAndBack(): void
+    {
+        $run = RunId::generate();
+        $json = json_encode([
+            'task_id' => 'report',
+            'state' => 'finished',
+            'at' => '2026-03-04T14:30:00.000000+00:00',
+            'host' => 'web-1',
+            'detail' => null,
+            'run_id' => $run->value,
+        ], JSON_THROW_ON_ERROR);
+        $redis = $this->createMock(Redis::class);
+        $redis->method('multi')->willReturnSelf();
+        $redis->expects($this->once())->method('lPush')->with(self::HISTORY, $json)->willReturnSelf();
+        $redis->method('lTrim')->willReturnSelf();
+        $redis->method('hSet')->willReturnSelf();
+        $redis->method('exec')->willReturn([1, true, 1]);
+        $redis->expects($this->once())->method('hGet')->willReturn($json);
+        $repository = new RedisRunRepository($redis);
+
+        $repository->append(new RunRecord(new TaskId('report'), RunState::Finished, new DateTimeImmutable('2026-03-04 14:30:00 UTC'), 'web-1', null, $run));
+        $record = $repository->lastOf(new TaskId('report'), RunState::Finished);
+
+        self::assertSame($run->value, $record?->runId?->value);
     }
 
     /**
@@ -231,6 +264,8 @@ final class RedisRunRepositoryUnitTest extends TestCase
         yield 'bad timestamp' => [self::encode([...$valid, 'at' => 'yesterday'])];
         yield 'missing host' => [self::encode(array_diff_key($valid, ['host' => true]))];
         yield 'non string detail' => [self::encode([...$valid, 'detail' => 42])];
+        yield 'non string run id' => [self::encode([...$valid, 'run_id' => 42])];
+        yield 'invalid run id' => [self::encode([...$valid, 'run_id' => 'not-a-run-id'])];
     }
 
     /**

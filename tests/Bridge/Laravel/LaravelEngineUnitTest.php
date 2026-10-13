@@ -21,6 +21,7 @@ use Scheduling\Bridge\Laravel\TaskIndex;
 use Scheduling\Capability\Capability;
 use Scheduling\Capability\Fulfilment;
 use Scheduling\Exception\InvalidTaskException;
+use Scheduling\Run\RunId;
 use Scheduling\Run\RunListenerInterface;
 use Scheduling\Task\AdapterOptions;
 use Scheduling\Task\Command;
@@ -199,7 +200,7 @@ final class LaravelEngineUnitTest extends TestCase
     public function testBeforeHookTellsTheListenerTheTaskStarted(): void
     {
         $listener = $this->createMock(RunListenerInterface::class);
-        $listener->expects($this->once())->method('started')->with(new TaskId('report'), $this->isInstanceOf(DateTimeImmutable::class));
+        $listener->expects($this->once())->method('started')->with(new TaskId('report'), $this->isInstanceOf(DateTimeImmutable::class))->willReturn(RunId::generate());
         $listener->expects($this->never())->method('finished');
         $listener->expects($this->never())->method('failed');
         $event = $this->registered($listener);
@@ -211,7 +212,7 @@ final class LaravelEngineUnitTest extends TestCase
     public function testSuccessHookTellsTheListenerTheTaskFinished(): void
     {
         $listener = $this->createMock(RunListenerInterface::class);
-        $listener->expects($this->once())->method('finished')->with(new TaskId('report'), $this->isInstanceOf(DateTimeImmutable::class));
+        $listener->expects($this->once())->method('finished')->with(new TaskId('report'), $this->isInstanceOf(RunId::class), $this->isInstanceOf(DateTimeImmutable::class));
         $listener->expects($this->never())->method('failed');
         $event = $this->registered($listener);
 
@@ -223,10 +224,38 @@ final class LaravelEngineUnitTest extends TestCase
     public function testFailureHookTellsTheListenerTheTaskFailed(): void
     {
         $listener = $this->createMock(RunListenerInterface::class);
-        $listener->expects($this->once())->method('failed')->with(new TaskId('report'), $this->isInstanceOf(DateTimeImmutable::class), null, null);
+        $listener->expects($this->once())->method('failed')->with(new TaskId('report'), $this->isInstanceOf(RunId::class), $this->isInstanceOf(DateTimeImmutable::class), null, null);
         $listener->expects($this->never())->method('finished');
         $event = $this->registered($listener);
 
+        $event->exitCode = 1;
+        $event->callAfterCallbacks($this->container);
+    }
+
+    /** @throws InvalidTaskException */
+    public function testSuccessHookReportsTheRunIdTheBeforeHookGot(): void
+    {
+        $run = RunId::generate();
+        $listener = $this->createMock(RunListenerInterface::class);
+        $listener->expects($this->once())->method('started')->willReturn($run);
+        $listener->expects($this->once())->method('finished')->with(new TaskId('report'), $this->identicalTo($run), $this->isInstanceOf(DateTimeImmutable::class));
+        $event = $this->registered($listener);
+
+        $event->callBeforeCallbacks($this->container);
+        $event->exitCode = 0;
+        $event->callAfterCallbacks($this->container);
+    }
+
+    /** @throws InvalidTaskException */
+    public function testFailureHookReportsTheRunIdTheBeforeHookGot(): void
+    {
+        $run = RunId::generate();
+        $listener = $this->createMock(RunListenerInterface::class);
+        $listener->expects($this->once())->method('started')->willReturn($run);
+        $listener->expects($this->once())->method('failed')->with(new TaskId('report'), $this->identicalTo($run), $this->isInstanceOf(DateTimeImmutable::class), null, null);
+        $event = $this->registered($listener);
+
+        $event->callBeforeCallbacks($this->container);
         $event->exitCode = 1;
         $event->callAfterCallbacks($this->container);
     }

@@ -11,6 +11,7 @@ use Scheduling\Capability\CapabilityReport;
 use Scheduling\Capability\Fulfilment;
 use Scheduling\Exception\InvalidTaskException;
 use Scheduling\Lock\LockKey;
+use Scheduling\Run\RunId;
 use Scheduling\Run\RunListenerInterface;
 use Scheduling\SchedulerEngineInterface;
 use Scheduling\Task\Command;
@@ -21,7 +22,9 @@ use Scheduling\Task\TaskProblem;
  * The Laravel bridge. Laravel keeps deciding what is due and runs each task as an artisan command; this class
  * registers every task with Laravel's own fluent API (cron, timezone, mutex name, withoutOverlapping, onOneServer,
  * when, hooks). Both lock slots are answered by our mutex (LaravelEventMutex, LaravelSchedulingMutex), and the
- * hooks feed the run record.
+ * hooks feed the run record: before() reports the start and keeps the run id the listener returns, onSuccess() and
+ * onFailure() report the end of that same run. Both hooks run in the foreground schedule:run process; background
+ * runs are not supported.
  */
 final class LaravelEngine implements SchedulerEngineInterface
 {
@@ -81,9 +84,16 @@ final class LaravelEngine implements SchedulerEngineInterface
         return $problems;
     }
 
+    /**
+     * Registers one task as a Laravel event. The run id lives in a variable shared by this event's hooks only.
+     * An end hook that fires without a start before it reports the end under a fresh run id, which the listener
+     * does not know and so never judges overran.
+     */
     private function registerOne(TaskDefinition $task, LaravelOptions $options): void
     {
         $id = $task->id;
+        /** @var RunId|null $run */
+        $run = null;
         $mutexName = LockKey::forTask($id)->value;
         $this->index->add($mutexName, $task);
 
@@ -95,9 +105,17 @@ final class LaravelEngine implements SchedulerEngineInterface
             ->withoutOverlapping((int) ceil($task->lock->ttlSeconds / 60))
             ->onOneServer()
             ->when(fn (): bool => $task->conditionsHold())
-            ->before(fn () => $this->listener->started($id, new DateTimeImmutable()))
-            ->onSuccess(fn () => $this->listener->finished($id, new DateTimeImmutable()))
-            ->onFailure(fn () => $this->listener->failed($id, new DateTimeImmutable(), null, null));
+            ->before(function () use ($id, &$run): void {
+                $run = $this->listener->started($id, new DateTimeImmutable());
+            })
+            ->onSuccess(function () use ($id, &$run): void {
+                $this->listener->finished($id, $run ?? RunId::generate(), new DateTimeImmutable());
+                $run = null;
+            })
+            ->onFailure(function () use ($id, &$run): void {
+                $this->listener->failed($id, $run ?? RunId::generate(), new DateTimeImmutable(), null, null);
+                $run = null;
+            });
 
         if (null !== $options->outputFile) {
             $event->appendOutputTo($options->outputFile);

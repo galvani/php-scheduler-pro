@@ -13,6 +13,7 @@ use Scheduling\Exception\InvalidTaskException;
 use Scheduling\Exception\LockUnavailableException;
 use Scheduling\Lock\LockKey;
 use Scheduling\Lock\MutexInterface;
+use Scheduling\Run\RunId;
 use Scheduling\Run\RunListenerInterface;
 use Scheduling\Run\SkipReason;
 use Scheduling\SchedulerEngineInterface;
@@ -28,7 +29,9 @@ use Scheduling\Task\TaskProblem;
  * - overlap lock: native, our mutex as crunz's Symfony Lock store (MutexStore), extended while the task runs;
  * - one server: polyfilled, the same per-minute claim Laravel's slot uses, taken in crunz's skip();
  * - conditions: native, through crunz's when();
- * - run record: polyfilled from before(), after() and the schedule-level onError().
+ * - run record: polyfilled from before(), after() and the schedule-level onError(). before() keeps the run id the
+ *   listener returns, keyed like the task ids, and after() or onError() report the end of that same run. All three
+ *   run in crunz's parent process.
  */
 final class CrunzEngine implements SchedulerEngineInterface
 {
@@ -36,6 +39,9 @@ final class CrunzEngine implements SchedulerEngineInterface
 
     /** @var array<int, TaskId> keyed by spl_object_id of the crunz Event */
     private array $idsByEvent = [];
+
+    /** @var array<int, RunId> the run in progress, keyed by spl_object_id of the crunz Event */
+    private array $runsByEvent = [];
 
     /**
      * @param non-empty-string $consoleBinary e.g. "php /app/artisan"
@@ -47,9 +53,10 @@ final class CrunzEngine implements SchedulerEngineInterface
         private readonly string $consoleBinary,
     ) {
         $this->schedule->onError(function (Event $event): void {
-            $id = $this->idsByEvent[spl_object_id($event)] ?? null;
+            $key = spl_object_id($event);
+            $id = $this->idsByEvent[$key] ?? null;
             if (null !== $id) {
-                $this->listener->failed($id, new DateTimeImmutable(), null, null);
+                $this->listener->failed($id, $this->endRun($key), new DateTimeImmutable(), null, null);
             }
         });
     }
@@ -120,11 +127,27 @@ final class CrunzEngine implements SchedulerEngineInterface
             ->timezone($task->timezone)
             ->when(fn (): bool => $this->conditionsHold($task))
             ->skip(fn (): bool => !$this->claimMinute($id))
-            ->preventOverlapping(new MutexStore($this->mutex, LockKey::forTask($id)))
-            ->before(fn () => $this->listener->started($id, new DateTimeImmutable()))
-            ->after(fn () => $this->listener->finished($id, new DateTimeImmutable()));
+            ->preventOverlapping(new MutexStore($this->mutex, LockKey::forTask($id)));
+        $key = spl_object_id($event);
+        $event
+            ->before(function () use ($id, $key): void {
+                $this->runsByEvent[$key] = $this->listener->started($id, new DateTimeImmutable());
+            })
+            ->after(fn () => $this->listener->finished($id, $this->endRun($key), new DateTimeImmutable()));
 
-        $this->idsByEvent[spl_object_id($event)] = $id;
+        $this->idsByEvent[$key] = $id;
+    }
+
+    /**
+     * Takes the run in progress of an event off the map. An end without a start before it gets a fresh run id,
+     * which the listener does not know and so never judges overran.
+     */
+    private function endRun(int $key): RunId
+    {
+        $run = $this->runsByEvent[$key] ?? RunId::generate();
+        unset($this->runsByEvent[$key]);
+
+        return $run;
     }
 
     private function conditionsHold(TaskDefinition $task): bool

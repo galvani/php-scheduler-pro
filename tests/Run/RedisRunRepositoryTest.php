@@ -9,6 +9,7 @@ use RedisException;
 use Scheduling\Exception\InvalidTaskException;
 use Scheduling\Exception\StorageException;
 use Scheduling\Run\RedisRunRepository;
+use Scheduling\Run\RunId;
 use Scheduling\Run\RunRecord;
 use Scheduling\Run\RunState;
 use Scheduling\Task\TaskId;
@@ -50,6 +51,19 @@ final class RedisRunRepositoryTest extends TestCase
         self::assertSame('web-1', $found->host);
         self::assertSame('boom', $found->detail);
         self::assertSame('2026-03-04T05:06:07.123456+02:00', $found->at->format('Y-m-d\TH:i:s.uP'));
+    }
+
+    /** @throws StorageException */
+    public function testRunIdIsStoredAndReadBack(): void
+    {
+        $repository = new RedisRunRepository($this->redis);
+        $run = RunId::generate();
+
+        $repository->append(new RunRecord($this->id, RunState::Started, new DateTimeImmutable('2026-01-01 10:00:00'), 'a', null, $run));
+        $repository->append(new RunRecord($this->id, RunState::Skipped, new DateTimeImmutable('2026-01-01 10:01:00'), 'a', 'still_running'));
+
+        self::assertSame($run->value, $repository->lastOf($this->id, RunState::Started)?->runId?->value);
+        self::assertNull($repository->lastOf($this->id, RunState::Skipped)?->runId);
     }
 
     /** @throws StorageException */

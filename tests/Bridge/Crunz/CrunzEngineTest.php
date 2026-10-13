@@ -197,6 +197,37 @@ final class CrunzEngineTest extends TestCase
         self::assertSame(["failed:{$this->id}"], $listener->calls);
     }
 
+    /**
+     * @throws InvalidTaskException
+     * @throws LockUnavailableException
+     * @throws RedisException
+     */
+    public function testEachEndCarriesTheRunIdItsOwnStartReturned(): void
+    {
+        $this->avoidMinuteBoundary();
+        $listener = new CollectingListener();
+        $schedule = new Schedule();
+        $other = "{$this->id}-b";
+        $this->engine($schedule, $listener)->register([$this->id => Tasks::make($this->id), $other => Tasks::make($other)]);
+        [$first, $second] = $schedule->events();
+        self::assertTrue($first->filtersPass(new DateTimeZone('UTC')));
+        self::assertTrue($second->filtersPass(new DateTimeZone('UTC')));
+
+        $this->invokeAll($first->beforeCallbacks());
+        $this->invokeAll($second->beforeCallbacks());
+        $this->invokeAll($first->afterCallbacks());
+        $this->invokeAll($second->errorCallbacks());
+        foreach ($schedule->errorCallbacks() as $callback) {
+            $callback($second);
+        }
+
+        self::assertSame(["started:{$this->id}", "started:{$other}", "finished:{$this->id}", "failed:{$other}"], $listener->calls);
+        [$firstStart, $secondStart, $firstEnd, $secondEnd] = $listener->runIds;
+        self::assertSame($firstStart, $firstEnd);
+        self::assertSame($secondStart, $secondEnd);
+        self::assertNotSame($firstStart, $secondStart);
+    }
+
     private function register(TaskDefinition $task, CollectingListener $listener): Event
     {
         $schedule = new Schedule();
