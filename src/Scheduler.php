@@ -131,7 +131,9 @@ final readonly class Scheduler implements SchedulerInterface
      *
      * An id the repository holds, as a task or as an invalid row, is always its own. Otherwise the problems of the
      * whole source that the repository did not report itself come from read-only sources: one without a task id
-     * (an unreadable file) or one naming $id (an invalid entry) refuses the write.
+     * (an unreadable file) or one naming $id (an invalid entry) refuses the write. Each load() builds new problems,
+     * so a problem counts as the repository's own when its source, task id and reason match one the repository
+     * reported.
      *
      * @throws TaskNotWritableException
      */
@@ -144,12 +146,13 @@ final readonly class Scheduler implements SchedulerInterface
         if (isset($runtime->tasks[$id->value]) || [] !== array_filter($runtime->problems, static fn (TaskProblem $problem) => $id->value === $problem->taskId)) {
             return $this->runtime;
         }
+        $reported = array_map(static fn (TaskProblem $problem) => [$problem->source, $problem->taskId, $problem->reason], $runtime->problems);
         $everywhere = $this->source->load();
         if (isset($everywhere->tasks[$id->value])) {
             throw new TaskNotWritableException("Task {$id->value} is defined in a read-only source");
         }
         foreach ($everywhere->problems as $problem) {
-            if (in_array($problem, $runtime->problems)) {
+            if (in_array([$problem->source, $problem->taskId, $problem->reason], $reported, true)) {
                 continue;
             }
             if (null === $problem->taskId) {

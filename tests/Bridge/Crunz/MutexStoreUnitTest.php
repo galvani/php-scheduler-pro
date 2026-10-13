@@ -5,10 +5,14 @@ namespace Scheduling\Tests\Bridge\Crunz;
 use DateTimeImmutable;
 use PHPUnit\Framework\TestCase;
 use Scheduling\Bridge\Crunz\MutexStore;
+use Scheduling\Exception\InvalidTaskException;
 use Scheduling\Exception\LockUnavailableException;
 use Scheduling\Lock\LockInterface;
 use Scheduling\Lock\LockKey;
 use Scheduling\Lock\MutexInterface;
+use Scheduling\Run\RunListenerInterface;
+use Scheduling\Run\SkipReason;
+use Scheduling\Task\TaskId;
 use Symfony\Component\Lock\Exception\LockAcquiringException;
 use Symfony\Component\Lock\Exception\LockConflictedException;
 use Symfony\Component\Lock\Exception\LockExpiredException;
@@ -19,6 +23,14 @@ use Symfony\Component\Lock\Lock;
 /** Isolates MutexStore from Redis: the mutex and the locks it hands out are mocks. */
 final class MutexStoreUnitTest extends TestCase
 {
+    private TaskId $task;
+
+    /** @throws InvalidTaskException */
+    protected function setUp(): void
+    {
+        $this->task = new TaskId('job');
+    }
+
     /** @throws LockConflictedException */
     public function testSaveAcquiresTheKeyForTwoMinutesAndKeepsTheLock(): void
     {
@@ -79,10 +91,12 @@ final class MutexStoreUnitTest extends TestCase
     {
         $mutex = $this->createMock(MutexInterface::class);
         $mutex->expects($this->once())->method('acquire')->willReturn(null);
+        $listener = $this->createMock(RunListenerInterface::class);
+        $listener->expects($this->once())->method('skipped')->with($this->task, $this->isInstanceOf(DateTimeImmutable::class), SkipReason::StillRunning);
         $key = new Key('resource');
 
         try {
-            $this->store($mutex)->save($key);
+            $this->store($mutex, $listener)->save($key);
             self::fail('LockConflictedException expected');
         } catch (LockConflictedException) {
             self::assertFalse($key->hasState(MutexStore::class));
@@ -94,11 +108,28 @@ final class MutexStoreUnitTest extends TestCase
     {
         $mutex = $this->createMock(MutexInterface::class);
         $mutex->expects($this->once())->method('acquire')->willThrowException(new LockUnavailableException('Redis is down'));
+        $listener = $this->createMock(RunListenerInterface::class);
+        $listener->expects($this->once())->method('skipped')->with($this->task, $this->isInstanceOf(DateTimeImmutable::class), SkipReason::LockUnavailable);
         $key = new Key('resource');
 
         $this->expectException(LockConflictedException::class);
 
-        $this->store($mutex)->save($key);
+        $this->store($mutex, $listener)->save($key);
+    }
+
+    /** @throws LockConflictedException */
+    public function testSaveRecordsNoSkipWhenTheHeldLockWasLostAndTheKeyIsTaken(): void
+    {
+        $lost = $this->createMock(LockInterface::class);
+        $lost->expects($this->once())->method('extend')->willReturn(false);
+        $mutex = $this->createMock(MutexInterface::class);
+        $mutex->expects($this->once())->method('acquire')->willReturn(null);
+        $listener = $this->createMock(RunListenerInterface::class);
+        $listener->expects($this->never())->method('skipped');
+
+        $this->expectException(LockConflictedException::class);
+
+        $this->store($mutex, $listener)->save($this->keyHolding($lost));
     }
 
     /** @throws LockReleasingException */
@@ -254,9 +285,9 @@ final class MutexStoreUnitTest extends TestCase
         $this->store($this->createStub(MutexInterface::class))->putOffExpiration(new Key('resource'), 5.0);
     }
 
-    private function store(MutexInterface $mutex): MutexStore
+    private function store(MutexInterface $mutex, ?RunListenerInterface $listener = null): MutexStore
     {
-        return new MutexStore($mutex, LockKey::forExternal('job'));
+        return new MutexStore($mutex, LockKey::forExternal('job'), $listener ?? $this->createStub(RunListenerInterface::class), $this->task);
     }
 
     private function keyHolding(LockInterface $lock): Key

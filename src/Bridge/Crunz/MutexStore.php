@@ -7,6 +7,9 @@ use Scheduling\Exception\LockUnavailableException;
 use Scheduling\Lock\LockInterface;
 use Scheduling\Lock\LockKey;
 use Scheduling\Lock\MutexInterface;
+use Scheduling\Run\RunListenerInterface;
+use Scheduling\Run\SkipReason;
+use Scheduling\Task\TaskId;
 use Symfony\Component\Lock\Exception\LockConflictedException;
 use Symfony\Component\Lock\Key;
 use Symfony\Component\Lock\PersistingStoreInterface;
@@ -19,6 +22,10 @@ use Symfony\Component\Lock\PersistingStoreInterface;
  * it again when it starts the process, and refreshes it from its run loop once fewer than 30 seconds remain. Every
  * write therefore sets the Key's lifetime, because crunz refreshes only a lock whose remaining lifetime is known,
  * and a second save() by the holder extends its own lock instead of failing on it.
+ *
+ * crunz has no event for a run its overlap check skips, so the store records that skip itself: the first save() of
+ * a run is crunz's overlap check, which crunz reaches only after the task's conditions held and this server claimed
+ * the minute.
  */
 final readonly class MutexStore implements PersistingStoreInterface
 {
@@ -27,6 +34,8 @@ final readonly class MutexStore implements PersistingStoreInterface
     public function __construct(
         private MutexInterface $mutex,
         private LockKey $key,
+        private RunListenerInterface $listener,
+        private TaskId $task,
     ) {}
 
     /**
@@ -35,6 +44,8 @@ final readonly class MutexStore implements PersistingStoreInterface
      * A Key that still holds the lock extends it to two minutes; a Key whose lock was lost, or that never held one,
      * acquires the core-built key for two minutes. Either way the Key's lifetime is set to those two minutes. A held
      * lock survives a lock storage failure, as in putOffExpiration(); a new one does not, so crunz skips that run.
+     * A Key that never held a lock is crunz's overlap check, and its refusal is recorded as a skip: `still_running`
+     * when another holder has the key, `lock_unavailable` when the lock storage cannot be reached.
      *
      * @throws LockConflictedException when another holder has the key, or a new lock meets unreachable lock storage
      */
@@ -47,10 +58,15 @@ final readonly class MutexStore implements PersistingStoreInterface
         }
         try {
             $lock = $this->mutex->acquire($this->key, self::INITIAL_TTL);
+            $reason = SkipReason::StillRunning;
         } catch (LockUnavailableException) {
             $lock = null;
+            $reason = SkipReason::LockUnavailable;
         }
         if (null === $lock) {
+            if (null === $held) {
+                $this->listener->skipped($this->task, new DateTimeImmutable(), $reason);
+            }
             throw new LockConflictedException();
         }
         $key->setState(self::class, $lock);

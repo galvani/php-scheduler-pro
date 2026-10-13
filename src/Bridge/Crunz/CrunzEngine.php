@@ -127,7 +127,7 @@ final class CrunzEngine implements SchedulerEngineInterface
             ->timezone($task->timezone)
             ->when(fn (): bool => $this->conditionsHold($task))
             ->skip(fn (): bool => !$this->claimMinute($id))
-            ->preventOverlapping(new MutexStore($this->mutex, LockKey::forTask($id)));
+            ->preventOverlapping(new MutexStore($this->mutex, LockKey::forTask($id), $this->listener, $id));
         $key = spl_object_id($event);
         $event
             ->before(function () use ($id, $key): void {
@@ -180,7 +180,12 @@ final class CrunzEngine implements SchedulerEngineInterface
         return false;
     }
 
-    /** @return list<string> crunz accepts strings only and escapes each item as one argv entry */
+    /**
+     * The arguments and options as crunz parameters, one string per word. Unlike Laravel's, crunz's
+     * compileParameters() quotes every item itself (Symfony Process::fromArrayCommand()), so nothing is quoted here.
+     *
+     * @return list<string>
+     */
     private static function parameters(Command $command): array
     {
         $parameters = $command->arguments;

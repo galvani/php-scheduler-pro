@@ -11,8 +11,10 @@ use RedisException;
 use ReflectionException;
 use ReflectionProperty;
 use Scheduling\Bridge\Crunz\MutexStore;
+use Scheduling\Exception\InvalidTaskException;
 use Scheduling\Lock\LockKey;
 use Scheduling\Lock\RedisMutex;
+use Scheduling\Task\TaskId;
 use Scheduling\Tests\RedisConnection;
 use Symfony\Component\Lock\Exception\LockAcquiringException;
 use Symfony\Component\Lock\Exception\LockConflictedException;
@@ -29,11 +31,17 @@ final class MutexStoreTest extends TestCase
 
     private LockKey $key;
 
-    /** @throws RedisException */
+    private TaskId $task;
+
+    /**
+     * @throws InvalidTaskException
+     * @throws RedisException
+     */
     protected function setUp(): void
     {
         $this->redis = RedisConnection::open();
         $this->key = LockKey::forExternal('store-'.bin2hex(random_bytes(6)));
+        $this->task = new TaskId('store');
     }
 
     /** @throws RedisException */
@@ -96,7 +104,7 @@ final class MutexStoreTest extends TestCase
      */
     public function testCrunzEventKeepsTheLockWhileItRuns(): void
     {
-        $event = new Schedule()->run('sleep 1')->preventOverlapping(new MutexStore(new RedisMutex($this->redis), $this->key));
+        $event = new Schedule()->run('sleep 1')->preventOverlapping($this->store());
 
         self::assertTrue($event->filtersPass(new DateTimeZone('UTC')));
         self::assertEqualsWithDelta(self::CRUNZ_LOCK_TTL * 1000, $this->redis->pttl($this->key->value), 2_000);
@@ -119,8 +127,13 @@ final class MutexStoreTest extends TestCase
         self::assertSame(0, $this->redis->exists($this->key->value));
     }
 
+    private function store(): MutexStore
+    {
+        return new MutexStore(new RedisMutex($this->redis), $this->key, new CollectingListener(), $this->task);
+    }
+
     private function lock(): Lock
     {
-        return new Lock(new Key('crunz-md5'), new MutexStore(new RedisMutex($this->redis), $this->key), self::CRUNZ_LOCK_TTL);
+        return new Lock(new Key('crunz-md5'), $this->store(), self::CRUNZ_LOCK_TTL);
     }
 }

@@ -16,9 +16,10 @@ The interfaces, with every parameter and the reason for its shape, are in
 - Laravel 12 and 13 through package auto-discovery; crunz in a Symfony 7.4 or 8 app through a bundle. Both are
   optional.
 
-> **On comments:** the code is commented more than production code would be, on purpose, for readability. It is
-> a demo meant to be read and presented, so every class, interface and public method says what it is and why it
-> exists.
+> **On comments:** the code is commented more than production code would be, on purpose: it is the answer to a
+> hiring test and is meant to be read and presented, so every class, interface and public method says what it is
+> and why it exists. A method that implements an interface or overrides a parent deliberately repeats the parent's
+> documentation instead of `{@inheritDoc}`, so a reader sees the promise without opening the parent.
 
 ## Requirements
 
@@ -316,12 +317,14 @@ in Docker when it is available.
 
 ## Limitations
 
+- The lock is as safe as the single Redis node it lives on. A failover to a replica that had not received the
+  latest `SET` can hand the same lock to a second server; Redlock over several independent nodes, or a store with
+  consensus, would close it. See the trade-offs in [docs/design.md](docs/design.md#known-trade-offs).
 - Laravel's `runInBackground()` is not supported for the package's tasks, and the application's own background
   tasks keep Laravel's lock. Our lock is released only by the process that took it; Laravel releases a
   background run from another process.
 - On Laravel a lock cannot be extended while a task runs. A run longer than `max_runtime` is recorded
   `overran` on both engines; on Laravel its lock may already have expired.
-- crunz has no event for a run skipped because the previous one is still running, so that skip is not recorded.
 - crunz evaluates conditions on every server before the one-server claim, so a condition that holds a task back
   is recorded once per server.
 - A failed run has no exit code or exception in its record: Laravel's failure hook passes neither, and crunz keeps

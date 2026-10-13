@@ -7,6 +7,7 @@ use Crunz\Event;
 use Crunz\Schedule;
 use DateInvalidTimeZoneException;
 use DateTimeZone;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Redis;
 use RedisException;
@@ -170,6 +171,50 @@ final class CrunzEngineTest extends TestCase
         $this->invokeAll($event->afterCallbacks());
         self::assertFalse($this->mutex->isLocked($overlapKey));
         self::assertSame(["started:{$this->id}", "finished:{$this->id}"], $listener->calls);
+    }
+
+    /**
+     * @throws InvalidTaskException
+     * @throws LockUnavailableException
+     * @throws RedisException
+     */
+    public function testOverlapCheckRecordsStillRunningWhileThePreviousRunHoldsTheLock(): void
+    {
+        $this->avoidMinuteBoundary();
+        $listener = new CollectingListener();
+        $event = $this->register(Tasks::make($this->id), $listener);
+        self::assertNotNull($this->mutex->acquire(LockKey::forTask(new TaskId($this->id)), 60));
+
+        $passes = $event->filtersPass(new DateTimeZone('UTC'));
+
+        self::assertFalse($passes);
+        self::assertSame(["skipped:{$this->id}:still_running"], $listener->calls);
+    }
+
+    /**
+     * @param list<string>                                      $arguments
+     * @param array<non-empty-string, string|list<string>|true> $options
+     *
+     * @throws DateInvalidTimeZoneException
+     * @throws InvalidTaskException
+     */
+    #[DataProvider('commandLines')]
+    public function testEveryArgumentAndOptionIsQuotedAsOneWord(array $arguments, array $options, string $expected): void
+    {
+        $task = new TaskDefinition(new TaskId($this->id), new CronExpression('* * * * *'), new Command('app:hello', $arguments, $options), new DateTimeZone('UTC'), new LockPolicy(60));
+
+        self::assertSame('php /app/bin/console app:hello'.$expected, $this->register($task, new CollectingListener())->buildCommand());
+    }
+
+    /** @return iterable<string, array{list<string>, array<non-empty-string, string|list<string>|true>, string}> */
+    public static function commandLines(): iterable
+    {
+        yield 'argument that looks like an option' => [['--x; touch /tmp/pwned1'], [], " '--x; touch /tmp/pwned1'"];
+        yield 'short option lookalike argument' => [['-x'], [], " '-x'"];
+        yield 'numeric argument' => [['42'], [], " '42'"];
+        yield 'option value that looks like an option' => [[], ['from' => '--y; touch /tmp/pwned2'], " '--from=--y; touch /tmp/pwned2'"];
+        yield 'list option value with a semicolon' => [[], ['tag' => ['a', 'b; id']], " '--tag=a' '--tag=b; id'"];
+        yield 'empty value' => [[], ['note' => ''], " '--note='"];
     }
 
     /**
